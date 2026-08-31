@@ -23,7 +23,7 @@ func main(){
 	//check if matrix a & b are valid
 	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]){
 		fmt.Println("Invalid matrices");
-		return -1;
+		return -1
 	}
 
 	//check if len of row a =  len of col b
@@ -32,7 +32,7 @@ func main(){
 
 	if rowa != colb{
 		fmt.Println("Incompatible matrices")
-		return -1;
+		return -1
 	}
 
 	//initialize result (cola x rowb), start filling matrix
@@ -40,12 +40,15 @@ func main(){
 
 	//loop through row a, multiply it into row b
 	for i := 0; i < len(a); i++{
-		for j := 0; j < 
+		for j := 0; j < len(b[0]); j++{
+			//start filling by 
+			for k := 0; k < len(b); k++{
+				result[i][j] += a[i][k] * b[k][j]
+			}
+		}
 	}
 
-
-
 	//matrix multiplication
-	fmt.Println();
+	fmt.Println()
 
 }
