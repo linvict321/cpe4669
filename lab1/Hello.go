@@ -26,13 +26,21 @@ func main(){
 		return -1;
 	}
 
-	//check if row a = col b
+	//check if len of row a =  len of col b
 	rowa := len(a)
 	colb := len(b[0])
 
 	if rowa != colb{
 		fmt.Println("Incompatible matrices")
 		return -1;
+	}
+
+	//initialize result (cola x rowb), start filling matrix
+	result := [len(a[0])][len(b)]{}
+
+	//loop through row a, multiply it into row b
+	for i := 0; i < len(a); i++{
+		for j := 0; j < 
 	}
 
 
