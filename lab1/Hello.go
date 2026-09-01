@@ -1,3 +1,4 @@
+//sequential version
 package main
 
 import (
