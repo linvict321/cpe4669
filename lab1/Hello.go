@@ -2,41 +2,29 @@ package main
 
 import (
 	"fmt"
-	"math"
 )
 
-func main(){
-
-	//example matrices
-	a := [][]uint8{
-		{0, 1, 2, 3},
-		{4, 5, 6, 7}
-	}
-
-	b := [][]uint8{
-		{0, 1, 2},
-		{3, 4, 5},
-		{6, 7, 8},
-		{9, 10, 11}
-	}
-
+func SeqMatrixMult(a [][]int, b [][]int) ([][]int) {
 	//check if matrix a & b are valid
-	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]){
+	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]) == 0 {
 		fmt.Println("Invalid matrices");
-		return -1
+		return nil
 	}
 
-	//check if len of row a =  len of col b
-	rowa := len(a)
-	colb := len(b[0])
+	//check if len of row a =  ken of col b
+	rowa := len(a[0])
+	colb := len(b)
 
 	if rowa != colb{
 		fmt.Println("Incompatible matrices")
-		return -1
+		return nil
 	}
 
-	//initialize result (cola x rowb), start filling matrix
-	result := [len(a[0])][len(b)]{}
+	//initialize result (rowa x colb), start filling matrix
+	result := make([][]int, rowa)
+	for i := range result {
+		result[i] = make([]int, colb)
+	}
 
 	//loop through row a, multiply it into row b
 	for i := 0; i < len(a); i++{
@@ -48,9 +36,31 @@ func main(){
 		}
 	}
 
-	
-
 	//matrix multiplication
-	fmt.Println()
+	return result
 
 }
+
+func main(){
+
+	//example matrices
+	a := [][]int{
+		{10, 1, 2, 3},
+		{4, 5, 6, 7},
+	}
+
+	b := [][]int{
+		{10, 1, 2},
+		{3, 4, 5},
+		{6, 7, 8},
+		{9, 10, 11},
+	}
+
+	result := SeqMatrixMult(a, b)
+
+	for i:= range result{
+		fmt.Println(result[i])
+	}
+
+}
+
