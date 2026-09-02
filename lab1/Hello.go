@@ -47,59 +47,59 @@ func SeqMatrixMult(a [][]float32, b [][]float32) ([][]float32) {
 func main() {
 	RunTests() // main from tests.go
 
-	//example matrices
-	a := [][]float32{
-		{10, 1, 2, 3},
-		{4, 5, 6, 7},
-	}
+	// //example matrices
+	// a := [][]float32{
+	// 	{10, 1, 2, 3},
+	// 	{4, 5, 6, 7},
+	// }
 
-	b := [][]float32{
-		{10, 1, 2},
-		{3, 4, 5},
-		{6, 7, 8},
-		{9, 10, 11},
-	}
+	// b := [][]float32{
+	// 	{10, 1, 2},
+	// 	{3, 4, 5},
+	// 	{6, 7, 8},
+	// 	{9, 10, 11},
+	// }
 
-	result := SeqMatrixMult(a, b)
+	// result := SeqMatrixMult(a, b)
 	
-	fmt.Println("-----SEQUENTIAL-----")
-	fmt.Println("\nResult 1 - a*b:")
-	for i:= range result{
-		fmt.Println(result[i])
-	}
+	// fmt.Println("-----SEQUENTIAL-----")
+	// fmt.Println("\nResult 1 - a*b:")
+	// for i:= range result{
+	// 	fmt.Println(result[i])
+	// }
 	
-	c := [][]float32 {
-		{1},
-		{5},
-	}
+	// c := [][]float32 {
+	// 	{1},
+	// 	{5},
+	// }
 
-	d := [][]float32 {
-		{1, 2},
-	}
+	// d := [][]float32 {
+	// 	{1, 2},
+	// }
 
-	result = SeqMatrixMult(c, d)
+	// result = SeqMatrixMult(c, d)
 	
-	fmt.Println("\nResult 2 - c*d:")
-	for i:= range result{
-		fmt.Println(result[i])
-	}
+	// fmt.Println("\nResult 2 - c*d:")
+	// for i:= range result{
+	// 	fmt.Println(result[i])
+	// }
 
-	fmt.Println("\n-----CONCURRENT-----")
+	// fmt.Println("\n-----CONCURRENT-----")
 
-	result = ConcurMatrixMult(a, b, 10000)
+	// result = ConcurMatrixMult(a, b, 10000)
 	
-	fmt.Println("\nResult 1 - a*b:")
-	for i:= range result{
-		fmt.Println(result[i])
-	}
+	// fmt.Println("\nResult 1 - a*b:")
+	// for i:= range result{
+	// 	fmt.Println(result[i])
+	// }
 
 
-	result = ConcurMatrixMult(c, d, 10000)
+	// result = ConcurMatrixMult(c, d, 10000)
 	
-	fmt.Println("\nResult 2 - c*d:")
-	for i:= range result{
-		fmt.Println(result[i])
-	}
+	// fmt.Println("\nResult 2 - c*d:")
+	// for i:= range result{
+	// 	fmt.Println(result[i])
+	// }
 
 }
 
