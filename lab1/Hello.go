@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func SeqMatrixMult(a [][]float64, b [][]float64) ([][]float64) {
+func SeqMatrixMult(a [][]float32, b [][]float32) ([][]float32) {
 	//check if matrix a & b are valid
 	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]) == 0 {
 		fmt.Println("Invalid matrices");
@@ -24,9 +24,9 @@ func SeqMatrixMult(a [][]float64, b [][]float64) ([][]float64) {
 	}
 
 	//initialize result (rowa x colb), start filling matrix
-	result := make([][]float64, rowsa)
+	result := make([][]float32, rowsa)
 	for i := range result {
-		result[i] = make([]float64, colsb)
+		result[i] = make([]float32, colsb)
 	}
 
 	//loop through row a, multiply it into row b
@@ -48,12 +48,12 @@ func main() {
 	RunTests() // main from tests.go
 
 	//example matrices
-	a := [][]float64{
+	a := [][]float32{
 		{10, 1, 2, 3},
 		{4, 5, 6, 7},
 	}
 
-	b := [][]float64{
+	b := [][]float32{
 		{10, 1, 2},
 		{3, 4, 5},
 		{6, 7, 8},
@@ -68,12 +68,12 @@ func main() {
 		fmt.Println(result[i])
 	}
 	
-	c := [][]float64 {
+	c := [][]float32 {
 		{1},
 		{5},
 	}
 
-	d := [][]float64 {
+	d := [][]float32 {
 		{1, 2},
 	}
 

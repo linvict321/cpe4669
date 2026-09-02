@@ -5,7 +5,7 @@ import (
 )
 
 type CellResult struct {
-	result float64
+	result float32
 	row int
 	col int
 }
@@ -13,7 +13,7 @@ type CellResult struct {
 // helper function, which returns the matrix result from multiplying
 // a row of A by just one col of B.
 // feeds a matrix the same size as the overall solution into a channel
-func calcCellResultAndInputToChannel (a [][]float64, b [][]float64, rowa int, colb int, ch chan CellResult) {
+func calcCellResultAndInputToChannel (a [][]float32, b [][]float32, rowa int, colb int, ch chan CellResult) {
 	//initialize result (rowa x colb), start filling matrix
 	cr := CellResult{
 		result: 0,
@@ -28,11 +28,11 @@ func calcCellResultAndInputToChannel (a [][]float64, b [][]float64, rowa int, co
 	ch <- cr
 }
 
-func calcFinalMatFromCellResults (ch chan CellResult, rows int, cols int) [][]float64 {
+func calcFinalMatFromCellResults (ch chan CellResult, rows int, cols int) [][]float32 {
 	// initialize final mat with zeros
-	final := make([][]float64, rows)
+	final := make([][]float32, rows)
 	for i := range rows {
-		final[i] = make([]float64, cols)
+		final[i] = make([]float32, cols)
 	}
 
 	for range rows*cols {
@@ -43,7 +43,7 @@ func calcFinalMatFromCellResults (ch chan CellResult, rows int, cols int) [][]fl
 	return final
 }
 
-func ConcurMatrixMult(a [][]float64, b [][]float64, numGoroutines int) [][]float64 {
+func ConcurMatrixMult(a [][]float32, b [][]float32, numGoroutines int) [][]float32 {
 	//check if matrix a & b are valid
 	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]) == 0 {
 		fmt.Println("Invalid matrices");

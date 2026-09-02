@@ -7,22 +7,22 @@ import (
 )
 
 //generate 2 random matrices
-func generateMatrix(rows, cols int) (a, b [][]float64) {
-    a = make([][]float64, rows)
-    b = make([][]float64, rows)
+func generateMatrix(rows, cols int) (a, b [][]float32) {
+    a = make([][]float32, rows)
+    b = make([][]float32, rows)
     
     for i := 0; i < rows; i++ {
-        a[i] = make([]float64, cols)
-        b[i] = make([]float64, cols)
+        a[i] = make([]float32, cols)
+        b[i] = make([]float32, cols)
         for j := 0; j < cols; j++ {
-            a[i][j] = rand.Float64()
-            b[i][j] = rand.Float64()
+            a[i][j] = rand.Float32()
+            b[i][j] = rand.Float32()
         }
     }
     return a, b
 }
 
-func compareMatrix (seq, concur [][]float64) bool{
+func compareMatrix (seq, concur [][]float32) bool{
 	for i := 0; i < len(seq); i++ {
 			for j := 0; j < len(seq[0]); j++ {
 				if seq[i][j] != concur[i][j] {
