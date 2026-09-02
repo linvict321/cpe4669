@@ -61,10 +61,13 @@ func ConcurMatrixMult(a [][]float64, b [][]float64, numGoroutines int) [][]float
 		return nil
 	}
 
-	ch := make(chan CellResult, rowsa)
+	ch := make(chan CellResult, rowsa*colsb)
 	goroutineLimit := make(chan struct{}, numGoroutines)
 
 	for i := range rowsa {
+		if i % 10 == 0 {
+			fmt.Printf("Row: %d\r", i)
+		}
 		for j := range colsb {
 			goroutineLimit <- struct{}{} // blocks if max num goroutines are running
 			

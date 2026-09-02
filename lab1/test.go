@@ -44,12 +44,13 @@ func RunTests() {
 	fmt.Printf("Sequential time: %v\n", seqTime)
 
 	//run concur multiple times with different goroutine numbers
-	numGo := []int{2,4,8,12}
+	numGo := []int{10000, 20000, 40000, 60000}
 	for i := 0; i < len(numGo); i++{
 		numG := numGo[i]
 		fmt.Printf("\nTesting with %d goroutines.\n", numG)
 		start := time.Now()
 		concurResult := ConcurMatrixMult(A, B, numG)
+		ConcurMatrixMult(A, B, numG)
 		concurTime := time.Since(start)
 		fmt.Printf("Concurrent time: %v\n\n", concurTime)
 		
