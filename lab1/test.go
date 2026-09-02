@@ -33,9 +33,18 @@ func compareMatrix (seq, concur [][]float32) bool{
 	return true
 
 }
+
+func Run10kTest() {
+	A, B := generateMatrix(10000, 10000)
+	start := time.Now()
+	ConcurMatrixMult(A, B, 10)
+	concurTime := time.Since(start)
+	fmt.Printf("Concurrent time: %v\n\n", concurTime)
+}
+
 func RunTests() {
     //generate random matrix once to use for both seq and concur
-    A, B := generateMatrix(1000, 1000)
+    A, B := generateMatrix(10000, 10000)
     
     //run seq once
 	start := time.Now()
@@ -50,7 +59,6 @@ func RunTests() {
 		fmt.Printf("\nTesting with %d goroutines.\n", numG)
 		start := time.Now()
 		concurResult := ConcurMatrixMult(A, B, numG)
-		ConcurMatrixMult(A, B, numG)
 		concurTime := time.Since(start)
 		fmt.Printf("Concurrent time: %v\n\n", concurTime)
 		

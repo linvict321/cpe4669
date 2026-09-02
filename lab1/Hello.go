@@ -49,6 +49,7 @@ func SeqMatrixMult(a [][]float32, b [][]float32) ([][]float32) {
 
 func main() {
 	RunTests() // main from tests.go
+	// Run10kTest() // only the 
 
 	// //example matrices
 	// a := [][]float32{
