@@ -35,14 +35,15 @@ func calcFinalMatFromCellResults (ch chan CellResult, rows int, cols int) [][]fl
 		final[i] = make([]float64, cols)
 	}
 
-	for cr := range ch {
+	for range rows*cols {
+		cr := <- ch
 		final[cr.row][cr.col] += cr.result
 	}
 
 	return final
 }
 
-func ConcurMatrixMult(a [][]float64, b [][]float64) [][]float64 {
+func ConcurMatrixMult(a [][]float64, b [][]float64, numGoroutines int) [][]float64 {
 	//check if matrix a & b are valid
 	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]) == 0 {
 		fmt.Println("Invalid matrices");
@@ -61,10 +62,18 @@ func ConcurMatrixMult(a [][]float64, b [][]float64) [][]float64 {
 	}
 
 	ch := make(chan CellResult, rowsa)
+	goroutineLimit := make(chan struct{}, numGoroutines)
 
 	for i := range rowsa {
 		for j := range colsb {
-			go calcCellResultAndInputToChannel(a, b, i, j, ch)
+			goroutineLimit <- struct{}{} // blocks if max num goroutines are running
+			
+			// wrap in this function to adhere to the goRoutine limit 
+			go func(i, j int) {
+				defer func() { <-goroutineLimit }() // defer requires a function to work
+				
+				calcCellResultAndInputToChannel(a, b, i, j, ch)
+			}(i, j)
 		}
 	}
 

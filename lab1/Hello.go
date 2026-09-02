@@ -45,6 +45,7 @@ func SeqMatrixMult(a [][]float64, b [][]float64) ([][]float64) {
 }
 
 func main() {
+	RunTests() // main from tests.go
 
 	//example matrices
 	a := [][]float64{
@@ -69,7 +70,7 @@ func main() {
 	
 	c := [][]float64 {
 		{1},
-		{2},
+		{5},
 	}
 
 	d := [][]float64 {
@@ -85,7 +86,7 @@ func main() {
 
 	fmt.Println("\n-----CONCURRENT-----")
 
-	result = ConcurMatrixMult(a, b)
+	result = ConcurMatrixMult(a, b, 10000)
 	
 	fmt.Println("\nResult 1 - a*b:")
 	for i:= range result{
@@ -93,7 +94,7 @@ func main() {
 	}
 
 
-	result = ConcurMatrixMult(c, d)
+	result = ConcurMatrixMult(c, d, 10000)
 	
 	fmt.Println("\nResult 2 - c*d:")
 	for i:= range result{

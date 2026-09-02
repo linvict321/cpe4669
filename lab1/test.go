@@ -33,9 +33,9 @@ func compareMatrix (seq, concur [][]float64) bool{
 	return true
 
 }
-func main() {
+func RunTests() {
     //generate random matrix once to use for both seq and concur
-    A, B := generateMatrix(10000, 10000)
+    A, B := generateMatrix(1000, 1000)
     
     //run seq once
 	start := time.Now()
