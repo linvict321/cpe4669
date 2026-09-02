@@ -1,30 +1,32 @@
-//sequential version
+// sequential version
 package main
 
 import (
 	"fmt"
 )
 
-func SeqMatrixMult(a [][]int, b [][]int) ([][]int) {
+func SeqMatrixMult(a [][]float64, b [][]float64) ([][]float64) {
 	//check if matrix a & b are valid
 	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]) == 0 {
 		fmt.Println("Invalid matrices");
 		return nil
 	}
 
-	//check if len of row a =  ken of col b
-	rowa := len(a[0])
-	colb := len(b)
+	//check if len of row a = len of col b (#cols a == #rows b)
+	rowsa := len(a)
+	colsa := len(a[0])
+	rowsb := len(b)
+	colsb := len(b[0])
 
-	if rowa != colb{
+	if colsa != rowsb{
 		fmt.Println("Incompatible matrices")
 		return nil
 	}
 
 	//initialize result (rowa x colb), start filling matrix
-	result := make([][]int, rowa)
+	result := make([][]float64, rowsa)
 	for i := range result {
-		result[i] = make([]int, colb)
+		result[i] = make([]float64, colsb)
 	}
 
 	//loop through row a, multiply it into row b
@@ -42,15 +44,15 @@ func SeqMatrixMult(a [][]int, b [][]int) ([][]int) {
 
 }
 
-func main(){
+func main() {
 
 	//example matrices
-	a := [][]int{
+	a := [][]float64{
 		{10, 1, 2, 3},
 		{4, 5, 6, 7},
 	}
 
-	b := [][]int{
+	b := [][]float64{
 		{10, 1, 2},
 		{3, 4, 5},
 		{6, 7, 8},
@@ -58,7 +60,42 @@ func main(){
 	}
 
 	result := SeqMatrixMult(a, b)
+	
+	fmt.Println("-----SEQUENTIAL-----")
+	fmt.Println("\nResult 1 - a*b:")
+	for i:= range result{
+		fmt.Println(result[i])
+	}
+	
+	c := [][]float64 {
+		{1},
+		{2},
+	}
 
+	d := [][]float64 {
+		{1, 2},
+	}
+
+	result = SeqMatrixMult(c, d)
+	
+	fmt.Println("\nResult 2 - c*d:")
+	for i:= range result{
+		fmt.Println(result[i])
+	}
+
+	fmt.Println("\n-----CONCURRENT-----")
+
+	result = ConcurMatrixMult(a, b)
+	
+	fmt.Println("\nResult 1 - a*b:")
+	for i:= range result{
+		fmt.Println(result[i])
+	}
+
+
+	result = ConcurMatrixMult(c, d)
+	
+	fmt.Println("\nResult 2 - c*d:")
 	for i:= range result{
 		fmt.Println(result[i])
 	}
