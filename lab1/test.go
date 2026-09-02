@@ -44,7 +44,7 @@ func RunTests() {
 	fmt.Printf("Sequential time: %v\n", seqTime)
 
 	//run concur multiple times with different goroutine numbers
-	numGo := []int{10, 100, 500, 1000, 5000, 10000}
+	numGo := []int{10, 100, 1000, 10000}
 	for i := 0; i < len(numGo); i++{
 		numG := numGo[i]
 		fmt.Printf("\nTesting with %d goroutines.\n", numG)

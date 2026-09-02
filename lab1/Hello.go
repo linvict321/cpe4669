@@ -31,6 +31,9 @@ func SeqMatrixMult(a [][]float32, b [][]float32) ([][]float32) {
 
 	//loop through row a, multiply it into row b
 	for i := 0; i < len(a); i++{
+		if i % 10 == 0 {
+			fmt.Printf("Row: %d\r", i)
+		}
 		for j := 0; j < len(b[0]); j++{
 			//start filling by 
 			for k := 0; k < len(b); k++{

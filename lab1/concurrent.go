@@ -61,8 +61,14 @@ func ConcurMatrixMult(a [][]float32, b [][]float32, numGoroutines int) [][]float
 		return nil
 	}
 
-	ch := make(chan CellResult, rowsa*colsb)
+	ch := make(chan CellResult)
 	goroutineLimit := make(chan struct{}, numGoroutines)
+ 
+	finalDone := make(chan [][]float32, 1)
+
+	go func() {
+		finalDone <- calcFinalMatFromCellResults(ch, rowsa, colsb)
+	}()
 
 	for i := range rowsa {
 		if i % 10 == 0 {
@@ -80,6 +86,5 @@ func ConcurMatrixMult(a [][]float32, b [][]float32, numGoroutines int) [][]float
 		}
 	}
 
-	final := calcFinalMatFromCellResults(ch, rowsa, colsb)
-	return final
+	return <- finalDone
 }
