@@ -1,21 +1,73 @@
 package main
 
-import(
+import (
 	"fmt"
 )
 
+type CellResult struct {
+	result float64
+	row int
+	col int
+}
 
-
-func main(){
-	a := [][]int{
-		{10, 1, 2, 3},
-		{4, 5, 6, 7},
+// helper function, which returns the matrix result from multiplying
+// a row of A by just one col of B.
+// feeds a matrix the same size as the overall solution into a channel
+func calcCellResultAndInputToChannel (a [][]float64, b [][]float64, rowa int, colb int, ch chan CellResult) {
+	//initialize result (rowa x colb), start filling matrix
+	cr := CellResult{
+		result: 0,
+		row: rowa,
+		col: colb,
 	}
 
-	b := [][]int{
-		{10, 1, 2},
-		{3, 4, 5},
-		{6, 7, 8},
-		{9, 10, 11},
+	// elt-wise mult: one row of a, one col of b
+	for i := range len(b) {
+		cr.result += a[rowa][i] * b[i][colb]
 	}
+	ch <- cr
+}
+
+func calcFinalMatFromCellResults (ch chan CellResult, rows int, cols int) [][]float64 {
+	// initialize final mat with zeros
+	final := make([][]float64, rows)
+	for i := range rows {
+		final[i] = make([]float64, cols)
+	}
+
+	for cr := range ch {
+		final[cr.row][cr.col] += cr.result
+	}
+
+	return final
+}
+
+func ConcurMatrixMult(a [][]float64, b [][]float64) [][]float64 {
+	//check if matrix a & b are valid
+	if len(a) == 0 || len(b) == 0 || len(a[0]) == 0 || len(b[0]) == 0 {
+		fmt.Println("Invalid matrices");
+		return nil
+	}
+
+	//check if len of row a = len of col b (#cols a == #rows b)
+	rowsa := len(a)
+	colsa := len(a[0])
+	rowsb := len(b)
+	colsb := len(b[0])
+
+	if colsa != rowsb{
+		fmt.Println("Incompatible matrices")
+		return nil
+	}
+
+	ch := make(chan CellResult, rowsa)
+
+	for i := range rowsa {
+		for j := range colsb {
+			go calcCellResultAndInputToChannel(a, b, i, j, ch)
+		}
+	}
+
+	final := calcFinalMatFromCellResults(ch, rowsa, colsb)
+	return final
 }
