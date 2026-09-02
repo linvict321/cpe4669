@@ -1,0 +1,62 @@
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+//generate 2 random matrices
+func generateMatrix(rows, cols int) (a, b [][]float64) {
+    a = make([][]float64, rows)
+    b = make([][]float64, rows)
+    
+    for i := 0; i < rows; i++ {
+        a[i] = make([]float64, cols)
+        b[i] = make([]float64, cols)
+        for j := 0; j < cols; j++ {
+            a[i][j] = rand.Float64()
+            b[i][j] = rand.Float64()
+        }
+    }
+    return a, b
+}
+
+func compareMatrix (seq, concur [][]float64) bool{
+	for i := 0; i < len(seq); i++ {
+			for j := 0; j < len(seq[0]); j++ {
+				if seq[i][j] != concur[i][j] {
+					return false
+				}
+			}
+	}
+	return true
+
+}
+func main() {
+    //generate random matrix once to use for both seq and concur
+    A, B := generateMatrix(10000, 10000)
+    
+    //run seq once
+	start := time.Now()
+    seqResult := SeqMatrixMult(A, B)
+	seqTime := time.Since(start)
+	fmt.Printf("Sequential time: %v\n", seqTime)
+
+	//run concur multiple times with different goroutine numbers
+	numGo := []int{2,4,8,12}
+	for i := 0; i < len(numGo); i++{
+		numG := numGo[i]
+		fmt.Printf("\nTesting with %d goroutines.\n", numG)
+		start := time.Now()
+		concurResult := ConcurMatrixMult(A, B, numG)
+		concurTime := time.Since(start)
+		fmt.Printf("Concurrent time: %v\n\n", concurTime)
+		
+		if compareMatrix(seqResult, concurResult) {
+			fmt.Printf("Results match.\n")
+		} else {
+				fmt.Printf("Results are different.\n")
+		}
+	}
+}
