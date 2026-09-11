@@ -4,6 +4,7 @@ import(
 	"fmt"
 	"log"
 	"net/rpc"
+	"time"
 )
 
 //was thinking i'd have client request server to find string search in 1MB file
@@ -16,6 +17,7 @@ type Args struct{
 
 func main(){
 	client, err := rpc.Dial("tcp", "127.0.0.1: 8080")
+	start := time.Now()
 
 	if err != nil {
 		log.Fatalf("Connection failed: %v", err)
@@ -29,6 +31,7 @@ func main(){
 	if err != nil {
 		log.Fatalf("RPC execution failed: %v", err)
 	}
-
-	fmt.Printf("Found %s in %s this many times: %d", args.Target, args.FileName, reply)
+	t := time.Now()
+	fmt.Printf("Found %s in %s this many times: %d in %d", 
+				args.Target, args.FileName, reply, t.Sub(start))
 }
