@@ -17,42 +17,62 @@ Discuss the effect of communication overhead and the number of workers/nodes on 
 package main
 
 import (
-    "log"
-    "net"
-    "net/rpc"
-
+	"io/ioutil"
+	"log"
+	"net"
+	"net/rpc"
+	"strings"
 )
 
 //idea: to run processes looking for the strings(diff num of worker nodes)
 
 //placeholder struct
-type wordSearch struct{}
-
+type WordSearch struct{}
 
 type Args struct {
-	target string
-	fileName string
+	Target string
+	FileName string
 }
 
-func (t *wordSearch) wordSearch(args *Args, reply *int) error { 
+func (t *WordSearch) Search(args *Args, reply *int) error { 
 	
+	//1 node: read file, search for words
+	// if split into other nodes, then split the lines in file, return the number of found to reply
+	searchedWord := args.Target
+	//read file
+	content, err := ioutil.ReadFile(args.FileName)
+	if err != nil {
+		log.Fatal(err)
+	}
 	
-	*reply = 0
+	lines := strings.Split(string(content), "\n")
+	found := 0
+
+	for _, line := range lines {
+		allWords := strings.Split(line, " ")
+			//case sensitive
+			for _, w := range allWords{
+				if w == searchedWord{
+					found += 1
+				}
+			}
+	}
+	
+	*reply = found
 	return nil
 }
 
 func main(){
 
 	//placeholder
-	words := new(wordSearch)
+	wordSearch := new(WordSearch)
 
-	rpc.Register(words)
+	rpc.Register(wordSearch)
 	rpc.HandleHTTP()
 	listen, error := net.Listen("tcp", ":8080")
 	if error != nil{
 		log.Fatal("listen error:", error)
 	}
-
 	defer listen.Close()
 
 	for{
