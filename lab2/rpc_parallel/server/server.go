@@ -26,19 +26,27 @@ import (
 //idea: to run processes looking for the strings(diff num of worker nodes)
 
 //placeholder struct
-type Args struct{}
-type TimeServer int64
-//function of string search
-func (t *TimeServer) GiveServerTime(args *Args) error{
+type wordSearch struct{}
+
+
+type Args struct {
+	target string
+	fileName string
+}
+
+func (t *wordSearch) wordSearch(args *Args, reply *int) error { 
+	
+	
+	*reply = 0
 	return nil
 }
 
 func main(){
 
 	//placeholder
-	timeserver := new(TimeServer)
+	words := new(wordSearch)
 
-	rpc.Register(timeserver)
+	rpc.Register(words)
 	rpc.HandleHTTP()
 	listen, error := net.Listen("tcp", ":8080")
 	if error != nil{

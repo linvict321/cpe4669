@@ -10,7 +10,8 @@ import(
 
 //placeholder
 type Args struct{
-	A, B int
+	target string
+	fileName string
 }
 
 func main(){
@@ -22,14 +23,14 @@ func main(){
 
 	defer client.Close()
 
-	args := Args{A:7, B:6}
+	args := Args{target: "Wikipedia", fileName: "RPC_text.txt"}
 	var reply int
 
-	err = client.Call("filler words", args, &reply)
+	err = client.Call("wordSearch.wordSearch", args, &reply)
 	if err != nil {
 		log.Fatalf("RPC execution failed: %v", err)
 	}
 
 
-	fmt.Printf("RPC Result: %d", args.A)
+	fmt.Printf("Found %s in %s this many times: %d", args.target, args.fileName, reply)
 }
