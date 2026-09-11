@@ -27,11 +27,15 @@ On Windows, mpiexec must first be installed to run MPI programs
 
 ```powershell
 winget install --exact --id Microsoft.msmpi
+$env:Path += ';C:\Program Files\Microsoft MPI\Bin'  # add mpiexec to your PATH for this shell session
 mpiexec.exe -help  # verify installation
 ```
 
-Then to run the MPI matmul program (make sure uv venv has been activated first as well)
+Then to run the MPI matmul program (make sure uv venv has been activated first as well).
+Replace <NUM_NODES> and <MATRIX_DIM> appropriately.
 
 ```sh
-mpiexec -n 4 python matmul.py
+mpiexec -n <NUM_NODES> python matmul.py <MATRIX_DIM>
 ```
+
+Note both A and B will both be random matrices of floats with shape (MATRIX_DIM, MATRIX_DIM)
