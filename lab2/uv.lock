@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [[package]]
-name = "cpe4669"
+name = "lab2"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
