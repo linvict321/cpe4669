@@ -32,7 +32,7 @@ mpiexec.exe -help  # verify installation
 ```
 
 Then to run the MPI matmul program (make sure uv venv has been activated first as well).
-Replace <NUM_NODES> and <MATRIX_DIM> appropriately.
+<MATRIX_DIM> must be divisible by <NUM_NODES>.
 
 ```sh
 mpiexec -n <NUM_NODES> python matmul.py <MATRIX_DIM>
