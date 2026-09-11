@@ -23,6 +23,15 @@ source .venv/bin/activate
 
 ## Usage
 
+On Windows, mpiexec must first be installed to run MPI programs
+
+```powershell
+winget install --exact --id Microsoft.msmpi
+mpiexec.exe -help  # verify installation
+```
+
+Then to run the MPI matmul program (make sure uv venv has been activated first as well)
+
 ```sh
 mpiexec -n 4 python matmul.py
 ```
