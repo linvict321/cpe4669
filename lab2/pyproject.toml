@@ -1,0 +1,10 @@
+[project]
+name = "lab2"
+version = "0.1.0"
+description = "Distributed algorithms lab 2"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mpi4py>=4.1.2",
+    "numpy>=2.5.3",
+]
