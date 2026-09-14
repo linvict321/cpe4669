@@ -32,10 +32,9 @@ mpiexec.exe -help  # verify installation
 ```
 
 Then to run the MPI matmul program (make sure uv venv has been activated first as well).
-<MATRIX_DIM> must be divisible by <NUM_NODES>.
 
 ```sh
 mpiexec -n <NUM_NODES> python matmul.py <MATRIX_DIM>
 ```
 
-Note both A and B will both be random matrices of floats with shape (MATRIX_DIM, MATRIX_DIM)
+Note both A and B will both be random matrices of float64's with shape (MATRIX_DIM, MATRIX_DIM)
