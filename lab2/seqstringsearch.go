@@ -2,10 +2,8 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
-	"time"
 )
 
 // takes in filename, and string to search for, counts how many occurances of given string
@@ -66,14 +64,4 @@ func SeqStringSearch(filename string, target string) int {
 
 	file.Close()
 	return totOccurance
-}
-
-func main() {
-	filename := "test1.txt"
-	target := "dog"
-	start := time.Now()
-	targetOcc := SeqStringSearch(filename, target)
-	elapsed := time.Since(start)
-	fmt.Printf("Searched file: %s\nFound %d occurances of %s.\n", filename, targetOcc, target)
-	fmt.Printf("Search took %s.\n", elapsed)
 }
