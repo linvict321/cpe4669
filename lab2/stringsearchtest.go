@@ -7,13 +7,7 @@ import (
 	"time"
 )
 
-func main() {
-	// file, error := os.Open(filename)
-	// if (error != nil) {
-	// 	//have to return int, so negative shows error
-	// 	return
-	// }
-
+func stringSearchTests() {
 	buff, _ := os.ReadFile("test1.txt")
 
 	//**Change for testing diff number of threads, 1, 10, 50, 100 maybe**

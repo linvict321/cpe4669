@@ -10,7 +10,7 @@ func ParStringSearch(filename string, target string, threads int) int {
 	file, error := os.Open(filename)
 	fileInfo, errorInfo := os.Stat(filename)
 	if (error != nil) || (errorInfo != nil) {
-		//have to return int, so negative shows error
+		//have to return int, so negative for error
 		return -1
 	}
 
