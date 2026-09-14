@@ -7,7 +7,7 @@ import (
 
 const (
 	filename = "test1.txt"
-	runs     = 5
+	runs     = 1
 )
 
 // times how long each run takes for a function

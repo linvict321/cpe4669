@@ -19,7 +19,7 @@ type Args struct{
 }
 
 func callServer(clientId int, wg *sync.WaitGroup, numclients int){
-	defer wg.Done()
+	defer wg.Done() // so that it runs
 	client, err := rpc.Dial("tcp", "127.0.0.1: 8080")
 
 	if err != nil {
@@ -52,8 +52,8 @@ func main(){
 	}
 	wg.Wait()
 
+	//calls the adder function inside the server
 	client, err := rpc.Dial("tcp", "127.0.0.1: 8080")
-
 	if err != nil {
 		log.Fatalf("Connection failed: %v", err)
 	}

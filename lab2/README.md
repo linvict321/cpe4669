@@ -38,3 +38,29 @@ mpiexec -n <NUM_NODES> python matmul.py <MATRIX_DIM>
 ```
 
 Note both A and B will both be random matrices of float64's with shape (MATRIX_DIM, MATRIX_DIM)
+
+
+# RPC Setup
+
+```sh
+cd lab2
+cd rpc_parallel
+
+```
+open up 2 terminals (or split terminal)
+
+for client terminal:
+```sh
+cd client
+go run client.go
+```
+
+for server terminal:
+```sh
+cd server
+go run server.go
+```
+
+to change num of worker nodes: go into client.go and change numClients
+
+the searched word is in client.go 's Target; the file being searched is RPC_text.txt in the server folder

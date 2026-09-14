@@ -26,12 +26,15 @@ import (
 
 //idea: to run processes looking for the strings(diff num of worker nodes)
 
-//placeholder struct
-type WordSearch struct{}
+var wordsFound = 0
 
+type WordSearch struct{}
 type Args struct {
 	Target string
 	FileName string
+	Workers int
+	CurrWorker int
+
 }
 
 func (t *WordSearch) Search(args *Args, reply *int) error { 
@@ -44,30 +47,39 @@ func (t *WordSearch) Search(args *Args, reply *int) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	lines := strings.Split(string(content), "\n")
 	found := 0
 
-	for _, line := range lines {
-		allWords := strings.Split(line, " ")
+	//formatted startline and endline
+	StartLine := (len(lines)/args.Workers)*(args.CurrWorker - 1)
+	EndLine := ((len(lines)/args.Workers)*args.CurrWorker)
+	for line := StartLine; line < EndLine; line++{
+		allWords := strings.Split(lines[line], " ")
 			//case sensitive
-			for _, w := range allWords{
-				if w == searchedWord{
-					found += 1
-				}
+		for _, w := range allWords{
+			if w == searchedWord{
+				found += 1
 			}
+		}
 	}
-	
+
+	wordsFound += found
 	*reply = found
+	return nil
+}
+
+func(t *WordSearch) AddedSum(args *Args, finalreply *int) error{
+	*finalreply = wordsFound
+	wordsFound = 0
 	return nil
 }
 
 func main(){
 
-	//placeholder
 	wordSearch := new(WordSearch)
-
 	rpc.Register(wordSearch)
+
 	rpc.HandleHTTP()
 	listen, error := net.Listen("tcp", ":8080")
 	if error != nil{
