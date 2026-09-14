@@ -1,11 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"time"
 )
 
 func main() {
+	// file, error := os.Open(filename)
+	// if (error != nil) {
+	// 	//have to return int, so negative shows error
+	// 	return
+	// }
+
+	buff, _ := os.ReadFile("test1.txt")
+
 	//**Change for testing diff number of threads, 1, 10, 50, 100 maybe**
 	threads := 10
 	chunks := 10
@@ -18,20 +28,21 @@ func main() {
 	start := time.Now()
 	targetOcc1 := SeqStringSearch(filename, target, chunks)
 	elapsed1 := time.Since(start)
-	fmt.Printf("Searched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
+	fmt.Printf("Found %d occurances of %s.\n", targetOcc1, target)
 	fmt.Printf("Search took %s.\n", elapsed1)
 
 	fmt.Printf("\nRunning parallel string search with %d threads...\n", threads)
 	start = time.Now()
 	targetOcc2 := ParStringSearch(filename, target, threads)
 	elapsed2 := time.Since(start)
-	fmt.Printf("Searched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
+	fmt.Printf("Found %d occurances of %s.\n", targetOcc2, target)
 	fmt.Printf("Search took %s.\n", elapsed2)
 
-	if targetOcc1 == targetOcc2 {
-		fmt.Println("Parallel and sequential string search occurances matched!")
+	actualOcc := bytes.Count(buff, []byte("dog"))
+	if actualOcc == targetOcc1 && actualOcc == targetOcc2 {
+		fmt.Printf("Total occurances of %s is correct.\n", target)
 	} else {
-		fmt.Println("Parallel and sequential string search occurances did not match.")
+		fmt.Printf("Actual occurances of %s is %d, seq and parallel not correct.\n", target, actualOcc)
 	}
 
 	//test 2, occurance = 8036
@@ -42,20 +53,21 @@ func main() {
 	start = time.Now()
 	targetOcc1 = SeqStringSearch(filename, target, chunks)
 	elapsed1 = time.Since(start)
-	fmt.Printf("Searched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
+	fmt.Printf("Found %d occurances of %s.\n", targetOcc1, target)
 	fmt.Printf("Search took %s.\n", elapsed1)
 
 	fmt.Printf("\nRunning parallel string search with %d threads...\n", threads)
 	start = time.Now()
 	targetOcc2 = ParStringSearch(filename, target, threads)
 	elapsed2 = time.Since(start)
-	fmt.Printf("Searched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
+	fmt.Printf("Found %d occurances of %s.\n", targetOcc2, target)
 	fmt.Printf("Search took %s.\n", elapsed2)
 
-	if targetOcc1 == targetOcc2 {
-		fmt.Println("Parallel and sequential string search occurances matched!")
+	actualOcc = bytes.Count(buff, []byte("the"))
+	if actualOcc == targetOcc1 && actualOcc == targetOcc2 {
+		fmt.Printf("Total occurances of %s is correct.\n", target)
 	} else {
-		fmt.Println("Parallel and sequential string search occurances did not match.")
+		fmt.Printf("Actual occurances of %s is %d, seq and parallel not correct.\n", target, actualOcc)
 	}
 
 	//test 3, occurance = 12053
@@ -66,19 +78,20 @@ func main() {
 	start = time.Now()
 	targetOcc1 = SeqStringSearch(filename, target, chunks)
 	elapsed1 = time.Since(start)
-	fmt.Printf("Searched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
+	fmt.Printf("Found %d occurances of %s.\n", targetOcc1, target)
 	fmt.Printf("Search took %s.\n", elapsed1)
 
 	fmt.Printf("\nRunning parallel string search with %d threads...\n", threads)
 	start = time.Now()
 	targetOcc2 = ParStringSearch(filename, target, threads)
 	elapsed2 = time.Since(start)
-	fmt.Printf("Searched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
+	fmt.Printf("Found %d occurances of %s.\n", targetOcc2, target)
 	fmt.Printf("Search took %s.\n", elapsed2)
 
-	if targetOcc1 == targetOcc2 {
-		fmt.Println("Parallel and sequential string search occurances matched!")
+	actualOcc = bytes.Count(buff, []byte("my"))
+	if actualOcc == targetOcc1 && actualOcc == targetOcc2 {
+		fmt.Printf("Total occurances of %s is correct.\n", target)
 	} else {
-		fmt.Println("Parallel and sequential string search occurances did not match.")
+		fmt.Printf("Actual occurances of %s is %d, seq and parallel not correct.\n", target, actualOcc)
 	}
 }
