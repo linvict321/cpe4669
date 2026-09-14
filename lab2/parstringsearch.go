@@ -33,7 +33,10 @@ func ParStringSearch(filename string, target string, threads int) int {
 		startOffset := i * chunkSize
 		endOffset := startOffset + chunkSize + (targetLen - 1)
 
-		if endOffset > filelen {
+		//1st case: last chunk with added targetLen - 1 will exceed filelen
+		//2nd case: with how we divided chunks could have remainder bytes not included
+		//so make sure last chunk goes to the end of file
+		if (endOffset > filelen) || (i == chunks-1) {
 			endOffset = filelen
 		}
 

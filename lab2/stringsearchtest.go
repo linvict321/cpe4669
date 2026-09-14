@@ -6,23 +6,27 @@ import (
 )
 
 func main() {
+	//**Change for testing diff number of threads, 1, 10, 50, 100 maybe**
+	threads := 10
+	chunks := 10
+
 	//test 1, occurance = 4018
+	fmt.Println("\n-------------------Test 1------------------")
 	filename := "test1.txt"
 	target := "dog"
-	fmt.Println("Running sequential string search...")
+	fmt.Printf("Running sequential string search with %d chunks...\n", chunks)
 	start := time.Now()
-	targetOcc1 := SeqStringSearch(filename, target)
+	targetOcc1 := SeqStringSearch(filename, target, chunks)
 	elapsed1 := time.Since(start)
-	fmt.Printf("\tSearched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
-	fmt.Printf("\tSearch took %s.\n", elapsed1)
+	fmt.Printf("Searched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
+	fmt.Printf("Search took %s.\n", elapsed1)
 
-	threads := 10 //**Change for testing diff number of threads, 1, 10, 50, 100 maybe**
-	fmt.Printf("Running parallel string search with %d threads...\n", threads)
+	fmt.Printf("\nRunning parallel string search with %d threads...\n", threads)
 	start = time.Now()
 	targetOcc2 := ParStringSearch(filename, target, threads)
 	elapsed2 := time.Since(start)
-	fmt.Printf("\tSearched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
-	fmt.Printf("\tSearch took %s.\n", elapsed2)
+	fmt.Printf("Searched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
+	fmt.Printf("Search took %s.\n", elapsed2)
 
 	if targetOcc1 == targetOcc2 {
 		fmt.Println("Parallel and sequential string search occurances matched!")
@@ -31,22 +35,22 @@ func main() {
 	}
 
 	//test 2, occurance = 8036
+	fmt.Println("\n-------------------Test 2------------------")
 	filename = "test1.txt"
 	target = "the"
-	fmt.Println("\nRunning sequential string search...")
+	fmt.Printf("Running sequential string search with %d chunks...\n", chunks)
 	start = time.Now()
-	targetOcc1 = SeqStringSearch(filename, target)
+	targetOcc1 = SeqStringSearch(filename, target, chunks)
 	elapsed1 = time.Since(start)
-	fmt.Printf("\tSearched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
-	fmt.Printf("\tSearch took %s.\n", elapsed1)
+	fmt.Printf("Searched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
+	fmt.Printf("Search took %s.\n", elapsed1)
 
-	threads = 10 //**Change for testing diff number of threads, 1, 10, 50, 100 maybe**
-	fmt.Printf("Running parallel string search with %d threads...\n", threads)
+	fmt.Printf("\nRunning parallel string search with %d threads...\n", threads)
 	start = time.Now()
 	targetOcc2 = ParStringSearch(filename, target, threads)
 	elapsed2 = time.Since(start)
-	fmt.Printf("\tSearched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
-	fmt.Printf("\tSearch took %s.\n", elapsed2)
+	fmt.Printf("Searched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
+	fmt.Printf("Search took %s.\n", elapsed2)
 
 	if targetOcc1 == targetOcc2 {
 		fmt.Println("Parallel and sequential string search occurances matched!")
@@ -55,22 +59,22 @@ func main() {
 	}
 
 	//test 3, occurance = 12053
+	fmt.Println("\n-------------------Test 3------------------")
 	filename = "test1.txt"
 	target = "my"
-	fmt.Println("\nRunning sequential string search...")
+	fmt.Printf("Running sequential string search with %d chunks...\n", chunks)
 	start = time.Now()
-	targetOcc1 = SeqStringSearch(filename, target)
+	targetOcc1 = SeqStringSearch(filename, target, chunks)
 	elapsed1 = time.Since(start)
-	fmt.Printf("\tSearched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
-	fmt.Printf("\tSearch took %s.\n", elapsed1)
+	fmt.Printf("Searched file %s.\nFound %d occurances of %s.\n", filename, targetOcc1, target)
+	fmt.Printf("Search took %s.\n", elapsed1)
 
-	threads = 10 //**Change for testing diff number of threads, 1, 10, 50, 100 maybe**
-	fmt.Printf("Running parallel string search with %d threads...\n", threads)
+	fmt.Printf("\nRunning parallel string search with %d threads...\n", threads)
 	start = time.Now()
 	targetOcc2 = ParStringSearch(filename, target, threads)
 	elapsed2 = time.Since(start)
-	fmt.Printf("\tSearched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
-	fmt.Printf("\tSearch took %s.\n", elapsed2)
+	fmt.Printf("Searched file: %s with %d threads.\nFound %d occurances of %s.\n", filename, threads, targetOcc2, target)
+	fmt.Printf("Search took %s.\n", elapsed2)
 
 	if targetOcc1 == targetOcc2 {
 		fmt.Println("Parallel and sequential string search occurances matched!")

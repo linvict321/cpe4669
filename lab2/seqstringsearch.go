@@ -7,7 +7,7 @@ import (
 )
 
 // takes in filename, and string to search for, counts how many occurances of given string
-func SeqStringSearch(filename string, target string) int {
+func SeqStringSearch(filename string, target string, numChunks int) int {
 	file, error := os.Open(filename)
 	fileInfo, errorInfo := os.Stat(filename)
 	if (error != nil) || (errorInfo != nil) {
@@ -21,17 +21,10 @@ func SeqStringSearch(filename string, target string) int {
 
 	//chunks = # of threads we would have, so change this for
 	//comparison w/diff amount of threads in parallel version
-	chunks := int64(100)
+	chunks := int64(numChunks)
 	chunkSize := filelen / chunks
 
 	totOccurance := 0
-
-	//int j = 0;
-	//for i to chunks
-	//	int j = j * i; //gives start index of chunk
-	//	for j to j + chunkSize
-	//		count how many occurances of word
-	//		after for loop add chunk size to j, so next j starts at start of next chunk
 
 	for i := int64(0); i < chunks; i++ {
 		//since word could be split across two chunks we read
@@ -39,7 +32,10 @@ func SeqStringSearch(filename string, target string) int {
 		startOffset := i * chunkSize
 		endOffset := startOffset + chunkSize + (targetLen - 1)
 
-		if endOffset > filelen {
+		//1st case: last chunk with added targetLen - 1 will exceed filelen
+		//2nd case: with how we divided chunks could have remainder bytes not included
+		//so make sure last chunk goes to the end of file
+		if (endOffset > filelen) || (i == chunks-1) {
 			endOffset = filelen
 		}
 
