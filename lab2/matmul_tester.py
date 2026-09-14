@@ -1,8 +1,7 @@
 import sys
 import subprocess
 
-# node_list = [1, 2, 4, 8, 16]
-node_list = [8, 16]
+node_list = [1, 2, 4, 8, 16]
 dim_list = [100, 1000, 5000, 10000]
 
 for nodes in node_list:
