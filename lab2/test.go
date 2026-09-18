@@ -7,17 +7,17 @@ import (
 
 const (
 	filename = "test1.txt"
-	runs = 10
+	runs     = 1
 )
 
-//times how long each run takes for a function
+// times how long each run takes for a function
 func timing(function func()) time.Duration {
 	start := time.Now()
 	function()
 	return time.Since(start)
 }
 
-//averages the time for running a function
+// averages the time for running a function
 func avgDuration(function func()) time.Duration {
 	total := time.Duration(0)
 
@@ -31,7 +31,6 @@ func avgDuration(function func()) time.Duration {
 func main() {
 	words := []string{"dog", "the", "my"}
 	threadCounts := []int{1, 2, 4, 8, 16, 32, 100}
-
 
 	//test each word
 	for i := 0; i < len(words); i++ {
