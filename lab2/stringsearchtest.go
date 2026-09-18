@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func main() {
+func test() {
 	// file, error := os.Open(filename)
 	// if (error != nil) {
 	// 	//have to return int, so negative shows error

@@ -43,7 +43,7 @@ func callServer(clientId int, wg *sync.WaitGroup, numclients int){
 func main(){
 	start := time.Now()
 
-	numclients := 1
+	numclients := 4
 	var wg sync.WaitGroup
 	wg.Add(numclients)
 	for i := 1; i<= numclients; i++ {
