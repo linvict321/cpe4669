@@ -64,3 +64,6 @@ comm.Scatterv(
 subarr.sort()
 
 print(f"rank {rank}: {subarr}")
+
+# you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
+# lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
