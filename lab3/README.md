@@ -34,5 +34,5 @@ mpiexec.exe -help  # verify installation
 Then to run the MPI matmul program (make sure uv venv has been activated first as well).
 
 ```sh
-mpiexec -n <NUM_NODES> python matmul.py <N>
+mpiexec -n <NUM_NODES> python mpi_sort.py <N>
 ```
