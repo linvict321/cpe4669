@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import time
 
+#used merge sort algorithm
 def mergesort(arr):
     if len(arr) <= 1:
         return arr
@@ -92,7 +93,7 @@ comm.Scatterv(
     root=0
 )
 
-mergesort(subarr) # TODO: fix implementation 
+mergesort(subarr)
 # subarr.sort()
 
 # barrier
@@ -107,19 +108,19 @@ print(f"rank {rank} sorted: {subarr}")
 if rank == 0:
     final_result = np.empty(N, dtype=np.int64)
 
+#gathered all subarrays
 comm.Gatherv(
     [subarr, MPI.INT64_T],
     [final_result, counts, starts, MPI.INT64_T] if rank == 0 else None, 
     root = 0
 )
 
-
-
+#sort it all in first node
 if rank == 0:
     time_end = time.time()
     print(f"Completed in {time_end - time_start:.2f} seconds")
 
-    final_result = mergesort(final_result)
+    final_result = mergesort(final_result) #merge result sort back together
     np_result = sorted(final_result) #auto python sort function?
 
     if np.array_equal(final_result, np_result):
