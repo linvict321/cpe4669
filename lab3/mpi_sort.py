@@ -92,15 +92,20 @@ comm.Scatterv(
     root=0
 )
 
-mergesort(subarr) 
+mergesort(subarr) # TODO: fix implementation 
+# subarr.sort()
 
-print(f"rank {rank}: {subarr}")
+# barrier
+comm.Barrier()
+
+
+print(f"rank {rank} sorted: {subarr}")
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
 
 if rank == 0:
-    final_result = np.empty()
+    final_result = np.empty(N, dtype=np.int64)
 
 comm.Gatherv(
     [subarr, MPI.INT64_T],
@@ -108,22 +113,24 @@ comm.Gatherv(
     root = 0
 )
 
+
+
 if rank == 0:
     time_end = time.time()
     print(f"Completed in {time_end - time_start:.2f} seconds")
 
-    np_result = arr.sort() #auto python sort function?
     final_result = mergesort(final_result)
+    np_result = sorted(final_result) #auto python sort function?
 
-    if np.equal(final_result, np_result):
+    if np.array_equal(final_result, np_result):
         print("This array is sorted correctly")
-        print(np_result)
-        print(final_result)
+        # print(np_result)
+        # print(final_result)
 
     else:
         print("this is incorrectly sorted\n")
-        print(np_result)
-        print(final_result)
+        print(f"np: {np_result}")
+        print(f"merge: {final_result}")
 
 
 
