@@ -29,6 +29,7 @@ arr = None
 starts = None
 counts = None
 if rank == 0:
+    time_start = time.time()
     N = int(sys.argv[1])
 
     # create the initial random arr
@@ -67,3 +68,28 @@ print(f"rank {rank}: {subarr}")
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
+
+#temp send and recv bufs
+final_result = []
+sendbuf = np.zeros(100, dtype = 'i') + rank
+recvbuf = None
+
+comm.Gatherv(
+    sendbuf,
+    recvbuf, 
+    root = 0
+)
+
+if rank == 0:
+    time_end = time.time()
+    print(f"Completed in {time_end - time_start:.2f} seconds")
+
+    np_result = arr.sort() #auto python sort function?
+
+    if np.allclose(final_result, np_result):
+        print("This array is sorted correctly")
+
+    else:
+        print("this is incorrectly sorted\n")
+        print(np_result)
+        print(final_result)
