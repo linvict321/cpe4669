@@ -45,7 +45,7 @@ if rank == 0:  # parent node
     if len(sys.argv) != 2:
         print("Usage: mpiexec python mpi_sort.py <N>")
         end_prog = True
-    elif int(sys.argv[1]) <= 0:
+    elif int(sys.argv[1]) < 0:
         print("Error: N must be a positive integer.")
         end_prog = True
 else:
@@ -58,13 +58,16 @@ if end_prog:
 arr = None
 starts = None
 counts = None
+input_checksum = None
 if rank == 0:
-    time_start = time.time()
     N = int(sys.argv[1])
 
     # create the initial random arr
     rng = np.random.default_rng(seed=42)
     arr = rng.integers(0, N, size=N)  # looks to be creating int64s
+
+    #checksum for verification
+    input_checksum = int(np.sum(arr))
     print(arr)
 
     # calculate how the arr will be split per node
@@ -81,6 +84,10 @@ if rank == 0:
 
     counts = ends - starts
 
+# barrier
+comm.Barrier()
+time_start = time.time()
+
 # tell all ranks how many elts they have so they can pre-alloc subarrs
 subcount = comm.scatter(counts, root=0)
 
@@ -92,14 +99,11 @@ comm.Scatterv(
     root=0
 )
 
-mergesort(subarr) # TODO: fix implementation 
-# subarr.sort()
+#mergesort(subarr) # TODO: fix implementation 
+#subarr.sort()
 
-# barrier
-comm.Barrier()
+subarr.sort()
 
-
-print(f"rank {rank} sorted: {subarr}")
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
@@ -113,24 +117,32 @@ comm.Gatherv(
     root = 0
 )
 
+comm.Barrier()
+time_end = time.time()
+elapsed_time = time_end - time_start
+all_times = comm.gather(elapsed_time, root=0)
+
+print(f"rank {rank} sorted: {subarr}")
+
 
 
 if rank == 0:
-    time_end = time.time()
-    print(f"Completed in {time_end - time_start:.2f} seconds")
-
+    elapsed = max(all_times)
     final_result = mergesort(final_result)
-    np_result = sorted(final_result) #auto python sort function?
+                       
+    #check that it's sorted / all adjacent values are in nondecreasing order
+    is_sorted = True
+    for i in range(len(final_result) - 1):
+        if final_result[i] > final_result[i + 1]:
+            is_sorted = False
+            break
 
-    if np.array_equal(final_result, np_result):
-        print("This array is sorted correctly")
-        # print(np_result)
-        # print(final_result)
-
-    else:
-        print("this is incorrectly sorted\n")
-        print(f"np: {np_result}")
-        print(f"merge: {final_result}")
-
-
-
+    #check the output has the same number of values and a checksum (or equivalent invariant) matching the input.
+    count_ok = (len(final_result) == N)
+    output_checksum = 0
+    for i in range(len(final_result)):
+        output_checksum += final_result[i]
+    checksum_ok = (output_checksum == input_checksum)
+    
+    passed = is_sorted and count_ok and checksum_ok
+    print(f"Result N={N} ranks={size} time={elapsed:.4f} pass={passed}")
