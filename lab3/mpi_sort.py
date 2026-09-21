@@ -61,6 +61,9 @@ counts = None
 input_checksum = None
 if rank == 0:
     N = int(sys.argv[1])
+    if N == 0:
+        #if given array of 0
+        end_prog = True
 
     # create the initial random arr
     rng = np.random.default_rng(seed=42)
@@ -68,7 +71,7 @@ if rank == 0:
 
     #checksum for verification
     input_checksum = int(np.sum(arr))
-    print(arr)
+    #print(arr) #commented out for cleaner print on sdsc
 
     # calculate how the arr will be split per node
     starts = np.zeros((size), dtype=int)
@@ -99,11 +102,7 @@ comm.Scatterv(
     root=0
 )
 
-#mergesort(subarr) # TODO: fix implementation 
-#subarr.sort()
-
 subarr.sort()
-
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
@@ -122,8 +121,7 @@ time_end = time.time()
 elapsed_time = time_end - time_start
 all_times = comm.gather(elapsed_time, root=0)
 
-print(f"rank {rank} sorted: {subarr}")
-
+#print(f"rank {rank} sorted:\n {subarr}") #commented out for large arrays on sdsc, don't want that printed lol
 
 
 if rank == 0:
