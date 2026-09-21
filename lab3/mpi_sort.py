@@ -3,6 +3,37 @@ import sys
 import numpy as np
 import time
 
+def mergesort(arr):
+    if len(arr) <= 1:
+        return arr
+
+    mid = len(arr) //2
+    leftH = arr[:mid]
+    rightH = arr[mid:]
+
+    sortedLeft = mergesort(leftH)
+    sortedRight = mergesort(rightH)
+
+    return merge(sortedLeft, sortedRight)
+
+def merge(left, right):
+    result = []
+    i = 0
+    j = 0
+
+    while i < len(left) and j < len(right):
+        if left[i] < right[j]:
+            result.append(left[i])
+            i += 1
+        else:
+            result.append(right[j])
+            j += 1
+
+    result.extend(left[i:])
+    result.extend(right[j:])
+
+    return result
+
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
@@ -23,7 +54,6 @@ else:
 end_prog = comm.bcast(end_prog, root=0)  # Broadcast end_prog to all nodes
 if end_prog:
     sys.exit(1)  # Exit all nodes if there was a cli arg issue
-
 
 arr = None
 starts = None
@@ -62,21 +92,19 @@ comm.Scatterv(
     root=0
 )
 
-subarr.sort()
+mergesort(subarr) 
 
 print(f"rank {rank}: {subarr}")
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
 
-#temp send and recv bufs
-final_result = []
-sendbuf = np.zeros(100, dtype = 'i') + rank
-recvbuf = None
+if rank == 0:
+    final_result = np.empty()
 
 comm.Gatherv(
-    sendbuf,
-    recvbuf, 
+    [subarr, MPI.INT64_T],
+    [final_result, counts, starts, MPI.INT64_T] if rank == 0 else None, 
     root = 0
 )
 
@@ -85,11 +113,17 @@ if rank == 0:
     print(f"Completed in {time_end - time_start:.2f} seconds")
 
     np_result = arr.sort() #auto python sort function?
+    final_result = mergesort(final_result)
 
-    if np.allclose(final_result, np_result):
+    if np.equal(final_result, np_result):
         print("This array is sorted correctly")
+        print(np_result)
+        print(final_result)
 
     else:
         print("this is incorrectly sorted\n")
         print(np_result)
         print(final_result)
+
+
+
