@@ -46,7 +46,7 @@ if rank == 0:  # parent node
     if len(sys.argv) != 2:
         print("Usage: mpiexec python mpi_sort.py <N>")
         end_prog = True
-    elif int(sys.argv[1]) <= 0:
+    elif int(sys.argv[1]) < 0:
         print("Error: N must be a positive integer.")
         end_prog = True
 else:
@@ -59,14 +59,20 @@ if end_prog:
 arr = None
 starts = None
 counts = None
+input_checksum = None
 if rank == 0:
-    time_start = time.time()
     N = int(sys.argv[1])
+    if N == 0:
+        #if given array of 0
+        end_prog = True
 
     # create the initial random arr
     rng = np.random.default_rng(seed=42)
     arr = rng.integers(0, N, size=N)  # looks to be creating int64s
-    print(arr)
+
+    #checksum for verification
+    input_checksum = int(np.sum(arr))
+    #print(arr) #commented out for cleaner print on sdsc
 
     # calculate how the arr will be split per node
     starts = np.zeros((size), dtype=int)
@@ -81,6 +87,10 @@ if rank == 0:
     ends[-1] = N
 
     counts = ends - starts
+
+# barrier
+comm.Barrier()
+time_start = time.time()
 
 # tell all ranks how many elts they have so they can pre-alloc subarrs
 subcount = comm.scatter(counts, root=0)
@@ -115,12 +125,13 @@ comm.Gatherv(
     root = 0
 )
 
-#sort it all in first node
+
+
 if rank == 0:
     time_end = time.time()
     print(f"Completed in {time_end - time_start:.2f} seconds")
 
-    final_result = mergesort(final_result) #merge result sort back together
+    final_result = mergesort(final_result)
     np_result = sorted(final_result) #auto python sort function?
 
     if np.array_equal(final_result, np_result):

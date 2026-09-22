@@ -36,3 +36,17 @@ Then to run the MPI matmul program (make sure uv venv has been activated first a
 ```sh
 mpiexec -n <NUM_NODES> python mpi_sort.py <N>
 ```
+
+## SDSC Usage
+First ssh into SDSC Expanse servers, cd into the lab directory, then run:
+
+```powershell
+module load slurm
+sbatch jobscript_merge.sh
+```
+
+The slurm '.out' files are in the following format "mergesort.%j.%N.out" with %j being the job number, and %n being the node name. If you can't find the file simply use command, and type it in with the actual job number and node names:
+```powershell
+ls *.out 
+cat mergesort.jobnumber.nodename.out
+```
