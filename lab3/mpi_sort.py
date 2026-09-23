@@ -3,19 +3,66 @@ import sys
 import numpy as np
 import time
 
+def distributed_k_way_merge(all_runs, comms):
+    rank = comm.Get_rank()
+    process_count = comm.Get_size()
+
+    if rank == 0:
+        assignments = [[] for _ in range(process_count)]
+
+        for run_index, run in enumerate(all_runs):
+            target_rank = run_index % process_count
+            assignments[target_rank].append(run)
+
+    else:
+            assignments = None
+    local_runs = comm.scatter(assignments, root = 0)
+
+    local_result = local_k_way_merge(local_runs)
+    step = 1
+    while step < process_count:
+        group_size = 2 * step
+        if rank % group_size == 0:
+            partner = rank + step
+            if partner < process_count:
+                #recv sorted result from partner process
+                recieved = comm.recv(source = partner, tag = step,)
+
+                #recv wins round by merging both lists
+                local_result = merge(local_result, recieved, )
+        elif rank % group_size == step:
+            partner = rank - step
+
+            #send proc result to lower ranked processes
+            comm.send(
+                local_result,
+                dest=partner,
+                tag=step,
+            )
+            return None
+
+        step *= 2
+    return local_result if rank == 0 else None
+
 #used merge sort algorithm
-def mergesort(arr):
-    if len(arr) <= 1:
-        return arr
+def local_k_way_merge(sorted_lists):
+    runs = sorted_lists
+    if not runs: 
+        return []
+    while len(runs) > 1:
+        next_round = []
 
-    mid = len(arr) //2
-    leftH = arr[:mid]
-    rightH = arr[mid:]
+        #merge adj runs
+        for i in range(0, len(runs), 2):
+            if i + 1 < len(runs):
+                next_round.append(merge(runs[i], runs[i + 1]))
+            else:
+                next_round.append(runs[i])
 
-    sortedLeft = mergesort(leftH)
-    sortedRight = mergesort(rightH)
+        runs = next_round
 
-    return merge(sortedLeft, sortedRight)
+    return runs[0]
+    
 
 def merge(left, right):
     result = []
@@ -103,8 +150,7 @@ comm.Scatterv(
     root=0
 )
 
-mergesort(subarr)
-# subarr.sort()
+subarr.sort()
 
 # barrier
 comm.Barrier()
@@ -114,18 +160,13 @@ print(f"rank {rank} sorted: {subarr}")
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
-
+sorted_runs = None
+final_result = None
 if rank == 0:
-    final_result = np.empty(N, dtype=np.int64)
-
-#gathered all subarrays
-comm.Gatherv(
-    [subarr, MPI.INT64_T],
-    [final_result, counts, starts, MPI.INT64_T] if rank == 0 else None, 
-    root = 0
-)
-
-
+    for i in size:
+        sorted_runs = []
+        sorted_runs.append(comm.recv(subarr))
+    final_result = distributed_k_way_merge(sorted_runs, comm)
 
 if rank == 0:
     time_end = time.time()
@@ -143,6 +184,3 @@ if rank == 0:
         print("this is incorrectly sorted\n")
         print(f"np: {np_result}")
         print(f"merge: {final_result}")
-
-
-
