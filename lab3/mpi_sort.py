@@ -172,7 +172,7 @@ if rank == 0:
     time_end = time.time()
     print(f"Completed in {time_end - time_start:.2f} seconds")
 
-    final_result = mergesort(final_result)
+    final_result = (final_result)
     np_result = sorted(final_result) #auto python sort function?
 
     if np.array_equal(final_result, np_result):
