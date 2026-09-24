@@ -160,21 +160,24 @@ print(f"rank {rank} sorted: {subarr}")
 
 # you can reference my comm.Gatherv code in lab2/matmul.py (line 71) for recombining.
 # lab3 won't need the "* dim" in the args tho since arr is already a 1D array. 
+
+#mpi reduce??
 print("after rank sorted")
 sorted_runs = None
 final_result = None
 if rank == 0:
     print("rank 0")
-    sorted_runs = []
-    sorted_runs.append(subarr)
+    sorted_runs = [subarr]
     for i in range(1, size):
-        buf = comm.recv(source = i)
+        buf = comm.recv(source = MPI.ANY_SOURCE)
         sorted_runs.append(buf)
         print("finished")
-    final_result = distributed_k_way_merge(sorted_runs, comm)
-    print(final_result)
+        #final_result = distributed_k_way_merge(sorted_runs, comm)
+    #print(final_result)
 else:
     comm.send(subarr, dest = 0)
+
+final_result = distributed_k_way_merge(sorted_runs, comm)
 
 if rank == 0:
     time_end = time.time()
