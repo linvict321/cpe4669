@@ -183,6 +183,23 @@ if rank == 0:
     time_end = time.time()
     print(f"Completed in {time_end - time_start:.2f} seconds")
 
+    #check all adjacent values are in nondecresing order
+    is_sorted = True
+    for i in range(len(final_result) - 1):
+        if final_result[i] > final_result[i + 1]:
+            is_sorted = False
+            break
+
+    #check output has same number of values as input
+    count_ok = (len(final_result) == N)
+
+    #check same checksum as input
+    output_checksum = int(np.sum(final_result))
+    sum_ok = (output_checksum==input_checksum)
+
+    #pass/fail status
+    passed = is_sorted and count_ok and sum_ok
+
     final_result = (final_result)
     np_result = sorted(final_result) #auto python sort function?
 
@@ -195,3 +212,6 @@ if rank == 0:
         print("this is incorrectly sorted\n")
         print(f"np: {np_result}")
         print(f"merge: {final_result}")
+
+    print(f"Result: N={N} ranks={size} time={time_end - time_start:.4f} pass={(passed)}")
+    
