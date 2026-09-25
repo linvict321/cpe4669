@@ -171,7 +171,7 @@ if rank == 0:
     for i in range(1, size):
         buf = comm.recv(source = MPI.ANY_SOURCE)
         sorted_runs.append(buf)
-        print("finished")
+        #print("finished")
         #final_result = distributed_k_way_merge(sorted_runs, comm)
     #print(final_result)
 else:
