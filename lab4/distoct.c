@@ -2,10 +2,14 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <mpi.h>
+#include <string.h>
 
 #define G 6.67430e-11
 #define SOFTENING 1e-9
 #define DT 0.01
+
+const int MAX_STRING = 100;
 
 typedef struct {
     double x, y, z;      // Position
@@ -13,6 +17,13 @@ typedef struct {
     double ax, ay, az;   // Acceleration
     double mass;
 } Body;
+
+typedef struct {
+    int mass; //sum of bodies
+    int centerOfMass; //weighted position
+    int sizeS; //cell width
+    Tree childNodes; 
+} Tree;
 
 /* Function prototypes */
 void initialize_bodies(Body *bodies, int n);
@@ -55,6 +66,19 @@ void initialize_bodies(Body *bodies, int n)
  * Later, this function can be replaced with an Octree /
  * Barnes-Hut version.
  */
+
+ //writing new version right here
+void compute_forces(Body *bodies, int n){
+    /* Reset acceleration */
+    for (int i = 0; i < n; i++) {
+        bodies[i].ax = 0.0;
+        bodies[i].ay = 0.0;
+        bodies[i].az = 0.0;
+    }
+
+    
+}
+
 void compute_forces(Body *bodies, int n)
 {
     /* Reset acceleration */
@@ -145,6 +169,22 @@ int main(int argc, char *argv[])
 {
     int num_bodies = 1000;
     int num_steps = 100;
+
+    //mpi portion
+    char greeting[MAX_STRING];
+    int comm_sz; //mum of processes
+    int my_rank;
+
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    //put mpi communication below:
+    if(my_rank != 0){
+
+    } else {
+
+    }
+
 
     /*
      * Allow command-line arguments:
