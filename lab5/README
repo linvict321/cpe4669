@@ -1,3 +1,20 @@
 # Lab 5 - Gossip Membership & Heartbeat Protocol
 
 ## Usage
+
+# RPC Setup
+
+```sh
+cd lab5
+```
+open up 2 terminals (or split terminal)
+
+for client terminal:
+```sh
+go run client.go
+```
+
+for server terminal:
+```sh
+go run server.go
+```
