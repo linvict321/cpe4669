@@ -4,7 +4,7 @@
 #include <time.h>
 
 #define G 6.67430e-11
-#define SOFTENING 1e-9
+#define SOFTENING 1e-1  // was originally 1e-9 but this was negligible
 #define DT 0.01
 
 typedef struct {
@@ -40,8 +40,7 @@ void initialize_bodies(Body *bodies, int n)
         bodies[i].ay = 0.0;
         bodies[i].az = 0.0;
 
-        bodies[i].mass =
-            1.0e20 + ((double)rand() / RAND_MAX) * 1.0e20;
+        bodies[i].mass = 1.0e10 + ((double)rand() / RAND_MAX) * 1.0e10;
     }
 }
 
@@ -174,6 +173,7 @@ int main(int argc, char *argv[])
     srand(0);
 
     initialize_bodies(bodies, num_bodies);
+    print_bodies(bodies, num_bodies);
 
     clock_t start = clock();
 
@@ -183,6 +183,31 @@ int main(int argc, char *argv[])
 
         update_bodies(bodies, num_bodies, DT);
 
+        // from the below testing, it was concluded that
+        // bodies will easily end up outside of the original [0, 100] dims
+        // so Octree creation will have to account for that
+        // for (int i = 0; i < num_bodies; i++) {
+        //     Body body = bodies[i];
+        //     if (body.x < 0 || body.x > 100 || 
+        //         body.y < 0 || body.y > 100 ||
+        //         body.z < 0 || body.z > 100
+        //     ) {
+        //         printf(
+        //             "Step %d - "
+        //             "Body %d: "
+        //             "pos=(%.4f, %.4f, %.4f) "
+        //             "vel=(%.4f, %.4f, %.4f)\n",
+        //             step,
+        //             i,
+        //             bodies[i].x,
+        //             bodies[i].y,
+        //             bodies[i].z,
+        //             bodies[i].vx,
+        //             bodies[i].vy,
+        //             bodies[i].vz
+        //         );
+        //     }
+        // }
         /*
          * Uncomment for debugging.
          *
@@ -198,6 +223,8 @@ int main(int argc, char *argv[])
 
     printf("Simulation completed.\n");
     printf("Execution time: %.6f seconds\n", elapsed);
+
+    print_bodies(bodies, num_bodies);
 
     free(bodies);
 
