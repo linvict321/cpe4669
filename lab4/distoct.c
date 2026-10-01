@@ -409,56 +409,6 @@ void init_global_space(double width, Box *global) {
     global->lmaxx = global->lmaxy = global->lmaxz = INFINITY;
 }
 
-/*
-* CAN PROBABLY REPLACE BY JUST DEFINING THE OVERALL 3D SPACE BOX AND THEN USING 
-* divide_box_into_octants
-*/
-Box* divide_3d_space(double width) {
-    Box *boxes = (Box*)malloc(sizeof(Box) * 8); // 8 octants
-    int i = 0;
-    boxes[i].minx = 0; boxes[i].miny = 0; boxes[i].minz = 0;
-    boxes[i].maxx = width / 2; boxes[i].maxy = width / 2; boxes[i].maxz = width / 2;
-    boxes[i].lminx = -INFINITY; boxes[i].lminy = -INFINITY; boxes[i].lminz = -INFINITY;
-    boxes[i].lmaxx = width / 2; boxes[i].lmaxy = width / 2; boxes[i].lmaxz = width / 2;
-    i++; // now i = i
-    boxes[i].minx = width / 2; boxes[i].miny = 0; boxes[i].minz = 0;
-    boxes[i].maxx = width; boxes[i].maxy = width / 2; boxes[i].maxz = width / 2;
-    boxes[i].lminx = width / 2; boxes[i].lminy = -INFINITY; boxes[i].lminz = -INFINITY;
-    boxes[i].lmaxx = INFINITY; boxes[i].lmaxy = width / 2; boxes[i].lmaxz = width / 2;
-    i++; // now i = 2
-    boxes[i].minx = width / 2; boxes[i].miny = width / 2; boxes[i].minz = 0;
-    boxes[i].maxx = width; boxes[i].maxy = width; boxes[i].maxz = width / 2;
-    boxes[i].lminx = width / 2; boxes[i].lminy = width / 2; boxes[i].lminz = -INFINITY;
-    boxes[i].lmaxx = INFINITY; boxes[i].lmaxy = INFINITY; boxes[i].lmaxz = width / 2;
-    i++; // now i = 3
-    boxes[i].minx = 0; boxes[i].miny = width / 2; boxes[i].minz = 0;
-    boxes[i].maxx = width / 2; boxes[i].maxy = width; boxes[i].maxz = width / 2;
-    boxes[i].lminx = -INFINITY; boxes[i].lminy = width / 2; boxes[i].lminz = -INFINITY;
-    boxes[i].lmaxx = width / 2; boxes[i].lmaxy = INFINITY; boxes[i].lmaxz = width / 2;
-    
-    i++; // now i = 4
-    boxes[i].minx = 0; boxes[i].miny = width / 2; boxes[i].minz = width / 2;
-    boxes[i].maxx = width / 2; boxes[i].maxy = width; boxes[i].maxz = width;
-    boxes[i].lminx = -INFINITY; boxes[i].lminy = width / 2; boxes[i].lminz = width / 2;
-    boxes[i].lmaxx = width / 2; boxes[i].lmaxy = INFINITY; boxes[i].lmaxz = INFINITY;
-    i++; // now i = 5
-    boxes[i].minx = width / 2; boxes[i].miny = width / 2; boxes[i].minz = width / 2;
-    boxes[i].maxx = width; boxes[i].maxy = width; boxes[i].maxz = width;
-    boxes[i].lminx = width / 2; boxes[i].lminy = width / 2; boxes[i].lminz = width / 2;
-    boxes[i].lmaxx = INFINITY; boxes[i].lmaxy = INFINITY; boxes[i].lmaxz = INFINITY;
-    i++; // now i = 6
-    boxes[i].minx = width / 2; boxes[i].miny = 0; boxes[i].minz = width / 2;
-    boxes[i].maxx = width; boxes[i].maxy = width / 2; boxes[i].maxz = width;
-    boxes[i].lminx = width / 2; boxes[i].lminy = -INFINITY; boxes[i].lminz = width / 2;
-    boxes[i].lmaxx = INFINITY; boxes[i].lmaxy = width / 2; boxes[i].lmaxz = INFINITY;
-    i++; // now i = 7
-    boxes[i].minx = 0; boxes[i].miny = 0; boxes[i].minz = width / 2;
-    boxes[i].maxx = width / 2; boxes[i].maxy = width / 2; boxes[i].maxz = width;
-    boxes[i].lminx = -INFINITY; boxes[i].lminy = -INFINITY; boxes[i].lminz = width / 2;
-    boxes[i].lmaxx = width / 2; boxes[i].lmaxy = width / 2; boxes[i].lmaxz = INFINITY;
-    
-    return boxes;
-}
 
 void print_boxes(Box *boxes, int n) {
     for (int i = 0; i < n; i++) {
@@ -576,7 +526,6 @@ int main(int argc, char *argv[]) {
     Box global;
     init_global_space(INITIAL_WIDTH, &global);
     Box *global_octants = divide_box_into_octants(&global);
-    Box *boxes = divide_3d_space(INITIAL_WIDTH);
     
     // calc how body ownership will be distributed across ranks
     // each rank is responsible for bodies [starts[r], ends[r])
