@@ -50,12 +50,12 @@ void update_bodies(Body *bodies, int n, double dt);
 void print_bodies(Body *bodies, int n);
 
 int acceptance_test(double cell_size, double distance, double accuracy);
-Box * divide_3d_space(double width);
 void get_idxs_for_each_rank(int *starts, int *ends, int n, int size);
 void handle_mpi_errcode(int errcode);
 int is_body_inside_box(Box *box, Body* body);
+OctreeNode* build_local_octree(Box* box, Body* bodies, int num_bodies);
 Box* divide_box_into_octants(Box *parent);
-void merge_boxes(Box *dst, Box *src);
+void merge_boxes(Box *merged, Box **boxes, int num_boxes);
 
 
 /*
@@ -308,7 +308,8 @@ int is_body_inside_box(Box *box, Body* body) {
 }
 
 /*
-* only bodies that are within the box should be put into bodies
+* TODO: adjust so only bodies that are within the box
+* should be passed in for bodies when recursing to the next depth
 */
 OctreeNode* build_local_octree(Box* box, Body* bodies, int num_bodies) {
     OctreeNode *node = (OctreeNode *)malloc(sizeof(OctreeNode));
@@ -335,20 +336,15 @@ OctreeNode* build_local_octree(Box* box, Body* bodies, int num_bodies) {
 
     // break up node into another 8 octree nodes if more than 1 body is within
     if (bodies_in_node > 1) {
-
+        Box *child_boxes = divide_box_into_octants(box);
         for (int i = 0; i < 8; i++) {
-            // OctreeNode *child_node = build_local_octree(box, bodies, num_bodies);
+            node->childNodes[i] = build_local_octree(box, bodies, num_bodies);
         }
     } else {
         node->childNodes = NULL;
     }
 
     return node;
-}
-
-void build_octree(OctreeNode* node, double width, Body* bodies, int num_bodies) {
-
-
 }
 
 Box* divide_box_into_octants(Box *parent) {
@@ -400,6 +396,38 @@ Box* divide_box_into_octants(Box *parent) {
     children[i].lmaxx = cx; children[i].lmaxy = cy; children[i].lmaxz = parent->lmaxz;
     
     return children;
+}
+
+/*
+* Only works as intended if the boxes being merged form a rectangular prism
+*/
+void merge_boxes(Box *merged, Box **boxes, int num_boxes) {
+    if (merged == NULL || boxes == NULL || num_boxes < 1) {
+        return;
+    }
+    
+    merged->minx = boxes[0]->minx; merged->maxx = boxes[0]->maxx;
+    merged->miny = boxes[0]->miny; merged->maxy = boxes[0]->maxy;
+    merged->minz = boxes[0]->minz; merged->maxz = boxes[0]->maxz;
+    merged->lminx = boxes[0]->lminx; merged->lmaxx = boxes[0]->lmaxx;
+    merged->lminy = boxes[0]->lminy; merged->lmaxy = boxes[0]->lmaxy;
+    merged->lminz = boxes[0]->lminz; merged->lmaxz = boxes[0]->lmaxz;
+
+    for (int i = 1; i < num_boxes; i++) {
+        if (boxes[i]->minx < merged->minx) merged->minx = boxes[i]->minx;
+        if (boxes[i]->maxx > merged->maxx) merged->maxx = boxes[i]->maxx;
+        if (boxes[i]->miny < merged->miny) merged->miny = boxes[i]->miny;
+        if (boxes[i]->maxy > merged->maxy) merged->maxy = boxes[i]->maxy;
+        if (boxes[i]->minz < merged->minz) merged->minz = boxes[i]->minz;
+        if (boxes[i]->maxz > merged->maxz) merged->maxz = boxes[i]->maxz;
+
+        if (boxes[i]->lminx < merged->lminx) merged->lminx = boxes[i]->lminx;
+        if (boxes[i]->lmaxx > merged->lmaxx) merged->lmaxx = boxes[i]->lmaxx;
+        if (boxes[i]->lminy < merged->lminy) merged->lminy = boxes[i]->lminy;
+        if (boxes[i]->lmaxy > merged->lmaxy) merged->lmaxy = boxes[i]->lmaxy;
+        if (boxes[i]->lminz < merged->lminz) merged->lminz = boxes[i]->lminz;
+        if (boxes[i]->lmaxz > merged->lmaxz) merged->lmaxz = boxes[i]->lmaxz;
+    }
 }
 
 void init_global_space(double width, Box *global) {
@@ -470,7 +498,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    if (size % 2 != 0 || size > 8) {
+    if ((size % 2 != 0 && size != 1) || size > 8) {
         if (rank == 0) {
             fprintf(stderr, "Cannot distribute across an odd number or more than 8 ranks. Aborting all ranks.\n");
         }
@@ -533,15 +561,25 @@ int main(int argc, char *argv[]) {
     int ends[size]; // exclusive
     get_idxs_for_each_rank(starts, ends, 8, size); // 8 octants
     printf("Rank %d has octants [%d, %d)\n", rank, starts[rank], ends[rank]);
-    
+
+    Box **global_octants_to_merge = (Box **)calloc(ends[rank] - starts[rank], sizeof(Box *));
+    for (int i = starts[rank]; i < ends[rank]; i++) {
+        global_octants_to_merge[i] = global_octants + i;
+    }
+    Box local_parent_box;  // the parent 3D space for this rank's local octree
+    merge_boxes(&local_parent_box, global_octants_to_merge, ends[rank] - starts[rank]);
+
     if (rank == 0) {
-        print_boxes(boxes, 8);
-        printf("\nNew Implementation:\n");
         print_boxes(global_octants, 8);
     }
+    printf("\nRank %d Local Parent: ", rank);
+    print_boxes(&local_parent_box, 1);
+
+    OctreeNode *local_octree = build_local_octree(&local_parent_box, bodies, num_bodies);
+    printOctree(local_octree, 0);
 
     int num_local_bodies = 25;  // adjust so that this becomes however many bodies are in the rank's area
-    Body *local_bodies = (Body *)malloc(sizeof(Body) * num_local_bodies);
+    // Body *local_bodies = (Body *)malloc(sizeof(Body) * num_local_bodies);
 
 
     // for (int step = 0; step < num_steps; step++) {
@@ -578,9 +616,9 @@ int main(int argc, char *argv[]) {
 
         free(bodies);
     }
-    free(boxes);
+    free(global_octants_to_merge);
     free(global_octants);
-    free(local_bodies);
+    // free(local_bodies);
 
     MPI_Finalize();
 
