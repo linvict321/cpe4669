@@ -158,11 +158,35 @@ func runAfterX(server *rpc.Client, node *shared.Node, membership **shared.Member
 }
 
 func runAfterY(server *rpc.Client, neighbors [2]int, membership **shared.Membership, id int) {
-	//TODO
+	//every y seconds each node sends its current heartbeat/membership table to its 2 neighbors
+	//a node receives a table and updates it local info
+
+	//send our table to 2 neighbors
+	for _, nID := range neighbors {
+		sendMessage(*server, nID, **membership)
+	}
+
+	//read and merge incoming gossip
+	newMembership := readMessages(*server, id, **membership)
+	if newMembership != nil {
+		*membership = newMembership
+	}
+
+	checkFailures(membership, id)
+
+	//reschedule for next y secs
+	time.AfterFunc(time.Second*Y_TIME, func() { runAfterY(server, neighbors, membership, id)})
+
 }
 
 func runAfterZ(server *rpc.Client, id int) {
-	//TODO
+	//simulate one node failing every z secs
+
+	//mark self as dead
+	self_node.Alive = false
+
+	//block forever
+	select {}
 }
 
 func printMembership(m shared.Membership) {
