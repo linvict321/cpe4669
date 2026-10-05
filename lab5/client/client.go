@@ -45,6 +45,23 @@ func readMessages(server *rpc.Client, id int) *shared.Membership {
 	}
 }
 
+func checkFailures(membership **shared.Membership, id int) {
+	//a node is failed if heartbeat hasn't been updated within timeout
+	currTime := float64(time.Now().UnixNano()) / float64(time.Second)
+	failTime := float64(3 * X_TIME)
+
+	for nodeID, node := range (*membership).Members {
+		if nodeID == id {
+			continue
+		}
+		if node.Alive && (currTime-node.Time) > failTime {
+			node.Alive = false
+			(*membership).Members[nodeID] = node
+			fmt.Printf("Node %d detected failure of Node %d\n", id, nodeID)
+		}
+	}
+}
+
 // func calcTime() float64 { //don't think i'll use this
 // 	//TODO
 // }
@@ -127,11 +144,11 @@ func runAfterY(server *rpc.Client, neighbors [2]int, membership **shared.Members
 
 	//send our table to 2 neighbors
 	for _, nID := range neighbors {
-		sendMessage(*server, nID, **membership)
+		sendMessage(server, nID, **membership)
 	}
 
 	//read and merge incoming gossip
-	newMembership := readMessages(*server, id, **membership)
+	newMembership := readMessages(server, id, **membership) //fix later
 	if newMembership != nil {
 		*membership = newMembership
 	}
