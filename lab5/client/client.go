@@ -13,9 +13,9 @@ import (
 
 const (
 	MAX_NODES  = 8
-	X_TIME     = 1
-	Y_TIME     = 2
-	Z_TIME_MAX = 100
+	X_TIME     = 1   //increments heartbeat counter every x seconds
+	Y_TIME     = 2   //sende membership table every y seconds
+	Z_TIME_MAX = 100 //z = time for node to fail, log(N) = log(8) = 3
 	Z_TIME_MIN = 10
 )
 
@@ -31,9 +31,9 @@ func readMessages(server rpc.Client, id int, membership shared.Membership) *shar
 	//TODO
 }
 
-func calcTime() float64 {
-	//TODO
-}
+// func calcTime() float64 { //don't think i'll use this
+// 	//TODO
+// }
 
 var wg = &sync.WaitGroup{}
 
@@ -58,7 +58,9 @@ func main() {
 
 	fmt.Println("Node", id, "will fail after", Z_TIME, "seconds")
 
-	currTime := calcTime()
+	//currTime := calcTime()
+	currTime := float64(time.Now().UnixNano()) / float64(time.Second) //convert from ns to sec, and typecast to float
+
 	// Construct self
 	self_node = shared.Node{ID: id, Hbcounter: 0, Time: currTime, Alive: true}
 	var self_node_response shared.Node // Allocate space for a response to overwrite this
