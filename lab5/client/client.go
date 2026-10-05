@@ -21,14 +21,28 @@ const (
 
 var self_node shared.Node
 
-// Send the current membership table to a neighboring node with the provided ID
-func sendMessage(server rpc.Client, id int, membership shared.Membership) {
-	//TODO
+// Send the current membership table to a neighboring node (to their ID)
+func sendMessage(server *rpc.Client, id int, membership shared.Membership) {
+	var req = shared.Request{ID: id, Table: membership}
+	var self_req_response bool
+	if err := server.Call("Requests.Add", req, &self_req_response); err != nil {
+		fmt.Println("Error: Requests.Add()", err)
+	} else {
+		fmt.Printf("Success: Message added to request list for Node %d\n", id)
+	}
 }
 
 // Read incoming messages from other nodes
-func readMessages(server rpc.Client, id int, membership shared.Membership) *shared.Membership {
-	//TODO
+func readMessages(server *rpc.Client, id int) *shared.Membership {
+	var self_recieved_table *shared.Membership
+	//use own id to check requests table if you have any message for your node id
+	if err := server.Call("Requests.Listen", id, &self_recieved_table); err != nil {
+		fmt.Println("Error: Requests.Listen()", err)
+		return nil //have to check this when calling readMessages()
+	} else {
+		fmt.Printf("Success: Node %d recieved pending gossip\n", id)
+		return self_recieved_table
+	}
 }
 
 // func calcTime() float64 { //don't think i'll use this
@@ -67,7 +81,7 @@ func main() {
 
 	// Add node with input ID
 	if err := server.Call("Membership.Add", self_node, &self_node_response); err != nil {
-		fmt.Println("Error:2 Membership.Add()", err)
+		fmt.Println("Error: Membership.Add()", err)
 	} else {
 		fmt.Printf("Success: Node created with id= %d\n", id)
 	}
@@ -78,7 +92,7 @@ func main() {
 	membership := shared.NewMembership()
 	membership.Add(self_node, &self_node)
 
-	sendMessage(*server, neighbors[0], *membership)
+	sendMessage(server, neighbors[0], *membership)
 
 	// crashTime := self_node.CrashTime()
 
@@ -96,6 +110,9 @@ func runAfterX(server *rpc.Client, node *shared.Node, membership **shared.Member
 
 func runAfterY(server *rpc.Client, neighbors [2]int, membership **shared.Membership, id int) {
 	//TODO
+	//pick neighbor to send to
+	//sendMessage(server, )
+	//also recieve message, need to send and read message each gossip round
 }
 
 func runAfterZ(server *rpc.Client, id int) {
