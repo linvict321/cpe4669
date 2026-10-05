@@ -23,12 +23,62 @@ var self_node shared.Node
 
 // Send the current membership table to a neighboring node with the provided ID
 func sendMessage(server rpc.Client, id int, membership shared.Membership) {
-	//TODO
+	request := shared.Request{
+		ID: id,
+		Table: membership,
+	}
+	var reply bool
+	err := server.Call("Requests.Add", request, &reply)
+	if err != nil {
+		fmt.Printf("Node %d failed to send to Node %d: %v\n", self_node.ID, id, err)
+		return
+	}
+
+	fmt.Printf("Node %d sent table to Node %d\n", self_node.ID, id)
+
 }
 
 // Read incoming messages from other nodes
 func readMessages(server rpc.Client, id int, membership shared.Membership) *shared.Membership {
-	//TODO
+	//look in our mailbox
+	var receivedTable shared.Membership
+	err := server.Call("Requests.Listen", id, &receivedTable)
+	if err != nil {
+		fmt.Printf("Node %d read error: %v\n", id, err)
+		return &membership
+	}
+
+	if len(receivedTable.Members) == 0 { //if Requets.Listen is empty, return our existing table, no gossip arrived
+		return &membership
+	}
+
+	fmt.Printf("Node %d received table with %d entries\n", id, len(receivedTable.Members))
+
+	//merge the received table
+	for nodeID, recNode := range receivedTable.Members {
+		myNode, exists := membership.Members[nodeID]
+		if !exists || recNode.Hbcounter > myNode.Hbcounter {
+			membership.Members[nodeID] = recNode
+		}
+	}
+	return &membership
+}
+
+func checkFailures(membership **shared.Membership, id int) {
+	//a node is failed if heartbeat hasn't been updated within timeout
+	currTime := float64(time.Now().UnixNano()) / float64(time.Second)
+	failTime := float64(3 * X_TIME)
+
+	for nodeID, node := range (*membership).Members {
+		if nodeID == id {
+			continue
+		}
+		if node.Alive && (currTime - node.Time) > failTime {
+			node.Alive = false
+			(*membership).Members[nodeID] = node
+			fmt.Printf("Node %d detected failure of Node %d\n", id, nodeID)
+		}
+	}
 }
 
 // func calcTime() float64 { //don't think i'll use this
@@ -91,7 +141,20 @@ func main() {
 }
 
 func runAfterX(server *rpc.Client, node *shared.Node, membership **shared.Membership, id int) {
-	//TODO
+	//if a node stops incrementing its heartbeat other nodes call it dead
+	//runAfterX helps with failure detection, slide 21
+	
+	//increment heartbeat every x seconds
+	node.Hbcounter++
+	node.Time = float64(time.Now().UnixNano())/float64(time.Second)
+	node.Alive = true
+
+	//update in local membership before gossiping
+	(*membership).Members[id] = *node
+	fmt.Printf("Node %d: heartbeat incremented to %d\n", id, node.Hbcounter)
+
+	//reschedule for next x seconds
+	time.AfterFunc(time.Second*X_TIME, func() { runAfterX(server, node, membership, id)})
 }
 
 func runAfterY(server *rpc.Client, neighbors [2]int, membership **shared.Membership, id int) {
