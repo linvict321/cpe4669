@@ -28,6 +28,7 @@ typedef struct {
     double maxx, maxy, maxz;
 
     // the limits of what the box can spatially expand to
+    // no longer needed since not letting bodies outside initial global space
     double lminx, lminy, lminz;
     double lmaxx, lmaxy, lmaxz;
 } Box;
@@ -42,12 +43,10 @@ typedef struct OctreeNode {
 /* Function prototypes */
 void initialize_bodies(Body *bodies, int n);
 void compute_forces(Body *bodies, int n);
-void compute_forces_dist(Body *bodies, int n);
-/* compute_forces() provides a clean sequential baseline with O(N²) complexity. 
-Students can then replace that function with an Octree/Barnes-Hut approach*/
 void update_bodies(Body *bodies, int n, double dt, int width);
 void print_bodies(Body *bodies, int n);
 
+void compute_forces_dist(Body *bodies, int n, OctreeNode *octrees, int rank, int size);
 int acceptance_test(double cell_size, double distance, double accuracy);
 void get_idxs_for_each_rank(int *starts, int *ends, int n, int size);
 void handle_mpi_errcode(int errcode);
@@ -87,12 +86,21 @@ void initialize_bodies(Body *bodies, int n) {
 }
 
  // writing new version right here
-void compute_forces_dist(Body *bodies, int n) {
+void compute_forces_dist(Body *bodies, int n, OctreeNode *octrees, int rank, int size) {
     /* Reset acceleration */
     for (int i = 0; i < n; i++) {
         bodies[i].ax = 0.0;
         bodies[i].ay = 0.0;
         bodies[i].az = 0.0;
+    }
+    
+    // TODO: WRITE ALG FOR ANY OCTREE NODE to a body
+    // maybe need to have separate one for same vs diff rank octree node?
+    for (int i = 0; i < n; i++) {
+        // for each body, go through all octrees (resursively as needed) to calc forces
+        for (int r = 0; r < size; r++) {
+            
+        }
     }
 }
 
@@ -498,6 +506,7 @@ void print_boxes(Box *boxes, int n) {
 /*
 * returns 1 if far away -> use one aggregate force
 * returns 0 if too close -> open the octree cell and inspect children
+* note: distance is from body to octree node COM
 */
 int acceptance_test(double cell_size, double distance, double accuracy) {
     return (cell_size / distance) < accuracy;
@@ -671,27 +680,45 @@ int main(int argc, char *argv[]) {
         );
         if (err != MPI_SUCCESS) handle_mpi_errcode(err);
     }
+    
+    OctreeNode octrees[size];
+    for (int step = 0; step < num_steps; step++) {
+        // recalculate local octree
+        OctreeNode *local_octree = build_local_octree(local_parent_box, local_bodies, num_local_bodies);
+        // printOctree(local_octree, 0);
 
-    OctreeNode *local_octree = build_local_octree(local_parent_box, local_bodies, num_local_bodies);
-    printOctree(local_octree, 0);
+        // every rank gets each others' local parent octree
+        err = MPI_Allgather(
+            local_octree, 1, MPI_BYTE,
+            octrees, size, MPI_BYTE, MPI_COMM_WORLD
+        );
 
+        compute_forces_dist(local_bodies, num_local_bodies, octrees, rank, size);
 
-    // for (int step = 0; step < num_steps; step++) {
-    //     // recalculate local octree
+        update_bodies(bodies, num_bodies, DT, INITIAL_WIDTH);
+        
+        int num_local_bodies_removed = 0;
+        for (int i = 0; i < num_local_bodies; i++) {
+            if (body_is_inside_box(local_parent_box, local_bodies + i) == 0) {
+                //TODO: find which rank to send the body to
+                // MPI_Send(local_bodies[i]);
+            }
+        }
+        
+        //TODO: now do an all-to-all where each rank tells the other ranks
+        // how many bodies they're sending said rank. Then do send/recv loops
+        // based on those counts
+        
+        err = MPI_Barrier(MPI_COMM_WORLD);
+        handle_mpi_errcode(err);
 
-    //     compute_forces(bodies, num_bodies);
-    // err = MPI_Barrier(MPI_COMM_WORLD);
-    // handle_mpi_errcode(err);
-
-    //     update_bodies(bodies, num_bodies, DT);
-
-    //     /*
-    //      * Uncomment for debugging.
-    //      *
-    //      * printf("Step %d\n", step);
-    //      * print_bodies(bodies, num_bodies);
-    //      */
-    // }
+        /*
+         * Uncomment for debugging.
+         *
+         * printf("Step %d\n", step);
+         * print_bodies(bodies, num_bodies);
+         */
+    }
 
     if (rank == 0) {
         end = clock();
