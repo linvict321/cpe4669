@@ -183,31 +183,6 @@ int main(int argc, char *argv[])
 
         update_bodies(bodies, num_bodies, DT);
 
-        // from the below testing, it was concluded that
-        // bodies will easily end up outside of the original [0, 100] dims
-        // so Octree creation will have to account for that
-        // for (int i = 0; i < num_bodies; i++) {
-        //     Body body = bodies[i];
-        //     if (body.x < 0 || body.x > 100 || 
-        //         body.y < 0 || body.y > 100 ||
-        //         body.z < 0 || body.z > 100
-        //     ) {
-        //         printf(
-        //             "Step %d - "
-        //             "Body %d: "
-        //             "pos=(%.4f, %.4f, %.4f) "
-        //             "vel=(%.4f, %.4f, %.4f)\n",
-        //             step,
-        //             i,
-        //             bodies[i].x,
-        //             bodies[i].y,
-        //             bodies[i].z,
-        //             bodies[i].vx,
-        //             bodies[i].vy,
-        //             bodies[i].vz
-        //         );
-        //     }
-        // }
         /*
          * Uncomment for debugging.
          *
