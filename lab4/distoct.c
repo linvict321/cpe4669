@@ -4,6 +4,7 @@
 #include <time.h>
 #include <mpi.h>
 #include <string.h>
+#include <pthread.h>
 
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
@@ -36,6 +37,7 @@ typedef struct {
 typedef struct OctreeNode {
     double mass; // sum of bodies' masses
     double COMx, COMy, COMz; // weighted COM position
+    double max_dim;
     Box bbox; // node bounding box
     struct OctreeNode **childNodes; // NULL if this OctreeNode is a leaf node
 } OctreeNode;
@@ -46,16 +48,18 @@ void compute_forces(Body *bodies, int n);
 void update_bodies(Body *bodies, int n, double dt, int width);
 void print_bodies(Body *bodies, int n);
 
-void compute_forces_dist(Body *bodies, int n, OctreeNode *octrees, int rank, int size);
+void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode *octrees, int rank, int size);
+double compute_distance(double dx, double dy, double sz);
 int acceptance_test(double cell_size, double distance, double accuracy);
 void get_idxs_for_each_rank(int *starts, int *ends, int n, int size);
 void handle_mpi_errcode(int errcode);
 int body_is_inside_box(Box box, Body* body);
 OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies);
+void printOctree(OctreeNode *node, int depth);
 Box init_global_space(double width);
 Box* divide_box_into_octants(Box parent);
 Box merge_boxes(Box *boxes, int num_boxes);
-void printOctree(OctreeNode *node, int depth);
+double get_box_max_dim(Box box);
 void send_body(Body body, int dst_rank);
 
 
@@ -85,8 +89,20 @@ void initialize_bodies(Body *bodies, int n) {
     }
 }
 
+double get_box_max_dim(Box box) {
+    double wx = box.maxx - box.minx;
+    double wy = box.maxy - box.miny;
+    double wz = box.maxz - box.minz;
+
+    double max_dim = wx;
+    if (wy > max_dim) max_dim = wy;
+    if (wz > max_dim) max_dim = wz;
+
+    return max_dim;
+}
+
  // writing new version right here
-void compute_forces_dist(Body *bodies, int n, OctreeNode *octrees, int rank, int size) {
+void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode *octrees, int rank, int size) {
     /* Reset acceleration */
     for (int i = 0; i < n; i++) {
         bodies[i].ax = 0.0;
@@ -96,10 +112,37 @@ void compute_forces_dist(Body *bodies, int n, OctreeNode *octrees, int rank, int
     
     // TODO: WRITE ALG FOR ANY OCTREE NODE to a body
     // maybe need to have separate one for same vs diff rank octree node?
+    OctreeNode *node;
+    double dx, dy, dz, distance, distance_squared, acceleration;
     for (int i = 0; i < n; i++) {
-        // for each body, go through all octrees (resursively as needed) to calc forces
+        // for each body, go through all octrees (resursively as needed)
+        // to calc the forces on it --> its accels
         for (int r = 0; r < size; r++) {
-            
+            if (r == rank) {
+                node = local_octree;
+            } else {
+                node = octrees + r;
+            }
+
+            dx = node->COMx - bodies[i].x,
+            dy = node->COMy - bodies[i].y,
+            dz = node->COMz - bodies[i].z,
+            distance_squared = dx * dx + dy * dy + dz * dz + SOFTENING;
+            distance = sqrt(distance_squared);
+
+            if (acceptance_test(node->max_dim, distance, ACCURACY) == 1) {
+                // the acceleration of body i due to node (treated as one body)
+                double acceleration = G * node->mass / distance_squared;
+
+                bodies[i].ax += acceleration * dx / distance;
+                bodies[i].ay += acceleration * dy / distance;
+                bodies[i].az += acceleration * dz / distance;
+            } else {
+                // do i need to adjust this to be recursive?
+                // or i could put into a while loop with the 
+                // acceptance test as the condition
+
+            }
         }
     }
 }
@@ -172,7 +215,6 @@ void update_bodies(Body *bodies, int n, double dt, int width) {
         if (bodies[i].z > width) bodies[i].z = width;
     }
 }
-
 
 /*
  * Print body information.
@@ -330,16 +372,10 @@ int body_is_inside_box(Box box, Body* body) {
 */
 OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies) {
     OctreeNode *node = (OctreeNode *)calloc(1, sizeof(OctreeNode));
-    /*
-    double cx = (box.minx + box.maxx) / 2; 
-    double cy = (box.miny + box.maxy) / 2;
-    double cz = (box.minz + box.maxz) / 2;
-    double wx = (box.maxx - box.minx); 
-    double wy = (box.maxy - box.miny); 
-    double wz = (box.maxz - box.minz); 
-    */
-
     node->bbox = box;
+    node->max_dim = get_box_max_dim(box);
+
+    // calc total mass and COM
     int bodies_in_node = 0;
     for (int i = 0; i < num_bodies; i++) {
         if (body_is_inside_box(box, bodies + i) == 1) {
@@ -359,7 +395,7 @@ OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies) {
     // break up node into another 8 octree nodes if more than 1 body is within
     if (bodies_in_node > 1) {
         Box *child_boxes = divide_box_into_octants(box);
-        node->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode **));
+        node->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
         for (int i = 0; i < 8; i++) {
             node->childNodes[i] = build_local_octree(child_boxes[i], bodies, num_bodies);
         }
@@ -512,7 +548,12 @@ int acceptance_test(double cell_size, double distance, double accuracy) {
     return (cell_size / distance) < accuracy;
 }
 
+double compute_distance(double dx, double dy, double dz) {
+    return sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2) + SOFTENING);
+}
+
 void send_body(Body body, int dst_rank) {
+    
     return;
 }
 
@@ -689,11 +730,11 @@ int main(int argc, char *argv[]) {
 
         // every rank gets each others' local parent octree
         err = MPI_Allgather(
-            local_octree, 1, MPI_BYTE,
-            octrees, size, MPI_BYTE, MPI_COMM_WORLD
+            local_octree, sizeof(OctreeNode), MPI_BYTE,
+            octrees, size * sizeof(OctreeNode), MPI_BYTE, MPI_COMM_WORLD
         );
 
-        compute_forces_dist(local_bodies, num_local_bodies, octrees, rank, size);
+        compute_forces_dist(local_bodies, num_local_bodies, local_octree, octrees, rank, size);
 
         update_bodies(bodies, num_bodies, DT, INITIAL_WIDTH);
         
