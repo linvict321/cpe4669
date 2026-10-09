@@ -31,6 +31,7 @@
 // currently only intended for up to 8 ranks at once due to the octree
 
 typedef struct {
+    int id; // for comparing start vs. end state
     double x, y, z;      // Position
     double vx, vy, vz;   // Velocity
     double ax, ay, az;   // Acceleration
@@ -91,12 +92,14 @@ Box* divide_box_into_octants(Box parent);
 Box merge_boxes(Box *boxes, int num_boxes);
 double get_box_max_dim(Box box);
 int int_pow(int base, int power);
+int compare_bodies_by_id(const void *a, const void *b);
 
 /*
  * Initialize bodies with random positions, velocities, and masses.
  */
 void initialize_bodies(Body *bodies, int n) {
     for (int i = 0; i < n; i++) {
+        bodies[i].id = i;
 
         // x,y,z are all doubles within [0, 100]
         bodies[i].x = ((double)rand() / RAND_MAX) * INITIAL_WIDTH;
@@ -157,7 +160,7 @@ void print_bodies(Body *bodies, int n) {
             "Body %d: "
             "pos=(%.4f, %.4f, %.4f) "
             "vel=(%.4f, %.4f, %.4f)\n",
-            i,
+            bodies[i].id,
             bodies[i].x,
             bodies[i].y,
             bodies[i].z,
@@ -309,7 +312,7 @@ OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth,
     // break up node into another 8 octree nodes if more than 1 body is within
     if ((bodies_in_node > 1) && (depth < MAX_DEPTH)) {
         Box *child_boxes = divide_box_into_octants(box);
-        node->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
+        node->childNodes = (OctreeNode **)malloc(8 * sizeof(OctreeNode *));
         for (int i = 0; i < 8; i++) {
             // add another digit to the parent id. tree root is the least-sig-digit
             int64_t child_id = id + (i+1)*int_pow(10, depth);
@@ -508,6 +511,14 @@ int box_eq(Box a, Box b) {
     return 1; // ignore box lims
 }
 
+// Comparator for qsort for sorting bodies by id (ascending)
+int compare_bodies_by_id(const void *a, const void *b) {
+    const Body *bodyA = (const Body *)a;
+    const Body *bodyB = (const Body *)b;
+
+    return bodyA->id - bodyB->id;
+}
+
 /*
 * traverse the tree using least-sig-digit of tree as root
 */
@@ -571,14 +582,19 @@ void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) 
         if ((node->childrenStatus == CHILDREN_NOT_RECEIVED)
         && (node->rank != rank)) { // if node->rank == rank, we already have the whole tree
             
-            node->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
+            node->childNodes = (OctreeNode **)malloc(8 * sizeof(OctreeNode *));
             Box *boxes_to_verify_nodes = divide_box_into_octants(node->bbox);
-            for (int r = 0; r < 8; r++) {
-                int64_t child_id_to_req = node->id + (r+1)*int_pow(10, depth);
+            for (int i = 0; i < 8; i++) {
+                node->childNodes[i] = (OctreeNode *)calloc(1, sizeof(OctreeNode));
+                if (node->childNodes[i] == NULL) {
+                    fprintf(stderr, "{Rank %d} - Error allocating child node for caching node from rank %d.\n", rank, node->rank);
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                }
+                int64_t child_id_to_req = node->id + (i+1)*int_pow(10, depth);
                 ServReq req = {
                     .command = NORMAL_SERVICE,
                     .id = child_id_to_req,
-                    .bbox = boxes_to_verify_nodes[r]
+                    .bbox = boxes_to_verify_nodes[i]
                 };
                 MPI_Send(
                     &req, sizeof(ServReq), MPI_BYTE,
@@ -586,17 +602,18 @@ void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) 
                     MPI_COMM_WORLD
                 );
                 MPI_Recv(
-                    node->childNodes[r], sizeof(OctreeNode), MPI_BYTE,
+                    node->childNodes[i], sizeof(OctreeNode), MPI_BYTE,
                     node->rank, TAG_NODE_RESPONSE,
                     MPI_COMM_WORLD, MPI_STATUS_IGNORE
                 );
             
-                compute_force_on_body_due_to_node(body, node->childNodes[r], depth+1);
+                compute_force_on_body_due_to_node(body, node->childNodes[i], depth+1);
             }
+            node->childrenStatus = CHILDREN_RECEIVED;
             free(boxes_to_verify_nodes);
         } else { // already have children cached
-            for (int r = 0; r < 8; r++) {
-                compute_force_on_body_due_to_node(body, node->childNodes[r], depth+1);
+            for (int i = 0; i < 8; i++) {
+                compute_force_on_body_due_to_node(body, node->childNodes[i], depth+1);
             }
         }
     }
@@ -787,11 +804,12 @@ int main(int argc, char *argv[]) {
         // send each rank's initial local bodies
         local_bodies = ranks_local_bodies[0];
         for (int r = 1; r < size; r++) {
-            MPI_Send(
+            err = MPI_Send(
                 ranks_local_bodies[r],
                 sizeof(Body)*ranks_num_local_bodies[r],
                 MPI_BYTE, r, 0, MPI_COMM_WORLD
             );
+            if (err != MPI_SUCCESS) handle_mpi_errcode(err);
             free(ranks_local_bodies[r]);
         }
     } else {
@@ -861,12 +879,17 @@ int main(int argc, char *argv[]) {
         }
 
         // identify any bodies that moved into a different rank's space
-        int ranks_to_transfer_bodies_to[num_local_bodies];
-        int num_bodies_to_send_per_rank[8] = {0};
-        int num_bodies_to_send_total = 0;
+        int ranks_to_transfer_bodies_to[num_local_bodies > 0 ? num_local_bodies : 1];
         for (int i = 0; i < num_local_bodies; i++) {
             ranks_to_transfer_bodies_to[i] = DONT_TRANSFER_BODY;
         }
+
+        int num_bodies_to_send_per_rank[size];
+        int num_bodies_to_send_total = 0;
+        for (int r = 0; r < size; r++) {
+            num_bodies_to_send_per_rank[r] = 0;
+        }
+
         for (int i = 0; i < num_local_bodies; i++) {
             if (!body_is_inside_box(local_parent_box, local_bodies + i)) {
                 // find and store which rank to send the body to
@@ -883,20 +906,32 @@ int main(int argc, char *argv[]) {
         }
         
         // each rank tells the other ranks how many bodies they're sending them.
-        int num_bodies_to_recv_per_rank[8] = {0};
-        MPI_Alltoall(
+        int num_bodies_to_recv_per_rank[size];
+        for (int r = 0; r < size; r++) {
+            num_bodies_to_recv_per_rank[r] = 0;
+        }
+
+        err = MPI_Alltoall(
             num_bodies_to_send_per_rank, 1, MPI_INT,
             num_bodies_to_recv_per_rank, 1, MPI_INT,
             MPI_COMM_WORLD
         );
+        if (err != MPI_SUCCESS) handle_mpi_errcode(err);
         
         // make send/recv amnt/disp arrays for Alltoallv
         int num_bodies_to_recv_total = 0;
-        int num_bytes_to_send_per_rank[8] = {0};
-        int send_disp_bodies_per_rank[8] = {0};
-        int send_disp_bytes_per_rank[8] = {0};
-        int num_bytes_to_recv_per_rank[8] = {0};
-        int recv_disp_bytes_per_rank[8] = {0};
+        int num_bytes_to_send_per_rank[size];
+        int send_disp_bodies_per_rank[size];
+        int send_disp_bytes_per_rank[size];
+        int num_bytes_to_recv_per_rank[size];
+        int recv_disp_bytes_per_rank[size];
+        for (int r = 0; r < size; r++) {
+            num_bytes_to_send_per_rank[r] = 0;
+            send_disp_bodies_per_rank[r] = 0;
+            send_disp_bytes_per_rank[r] = 0;
+            num_bytes_to_recv_per_rank[r] = 0;
+            recv_disp_bytes_per_rank[r] = 0;
+        }
         
         for (int r = 0; r < size; r++) {
             num_bodies_to_recv_total += num_bodies_to_recv_per_rank[r];
@@ -922,9 +957,12 @@ int main(int argc, char *argv[]) {
         }
             
         // assemble arr of bodies for sending to other ranks
-        Body bodies_to_send[num_bodies_to_send_total];
-        int num_bodies_inserted_per_rank[8] = {0};
-        int idxs_of_sent_bodies[num_bodies_to_send_total];
+        int num_bodies_inserted_per_rank[size];
+        for (int r = 0; r < size; r++) {
+            num_bodies_inserted_per_rank[r] = 0;
+        }
+        Body bodies_to_send[num_bodies_to_send_total > 0 ? num_bodies_to_send_total : 1];
+        int idxs_of_sent_bodies[num_bodies_to_send_total > 0 ? num_bodies_to_send_total : 1];
         int j = 0;
         for (int i = 0; i < num_local_bodies; i++) {
             int r = ranks_to_transfer_bodies_to[i];
@@ -937,16 +975,20 @@ int main(int argc, char *argv[]) {
             idxs_of_sent_bodies[j++] = i;
         }
 
+        // directly recv the new bodies into the bodies arr
+        Body *recv_buff = num_bodies_to_recv_total > 0 ? local_bodies + num_local_bodies : NULL;
+        
         // Now actually send the bodies to each other (Alltoallv?)
-        MPI_Alltoallv(
+        err = MPI_Alltoallv(
             bodies_to_send,
             num_bytes_to_send_per_rank, send_disp_bytes_per_rank,
             MPI_BYTE,
-            local_bodies + num_local_bodies, // directly recv the new bodies into the bodies arr
+            recv_buff,
             num_bytes_to_recv_per_rank, recv_disp_bytes_per_rank,
             MPI_BYTE,
             MPI_COMM_WORLD
         );
+        if (err != MPI_SUCCESS) handle_mpi_errcode(err);
 
         // remove the old local_bodies that got sent to dif ranks
         for (int i = 0; i < num_bodies_to_send_total; i++) {
@@ -956,10 +998,23 @@ int main(int argc, char *argv[]) {
 
         num_local_bodies = num_local_bodies + num_bodies_to_recv_total 
                                             - num_bodies_to_send_total;
-        tmp = (Body *)realloc(local_bodies, num_local_bodies * sizeof(Body));
-        if (tmp != NULL) {
+
+        if (num_local_bodies == 0) {
+            free(local_bodies);
+            local_bodies = NULL;
+        } else {
+            tmp = (Body *)realloc(local_bodies, num_local_bodies * sizeof(Body));
+            if (tmp == NULL) {
+                fprintf(stderr, "{Rank %d} - realloc failed when removing transferred local bodies!\n", rank);
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
             local_bodies = tmp;
-        } else fprintf(stderr, "{Rank %d} - realloc failed when removing transferred local bodies!\n", rank);
+        }
+
+        // free all octree copies since we have to remake them next timestep
+        for (int r = 0; r < size; r++) {
+            free_octree(octree_ptrs[r]);
+        }
 
         err = MPI_Barrier(MPI_COMM_WORLD);
         handle_mpi_errcode(err);
@@ -970,6 +1025,41 @@ int main(int argc, char *argv[]) {
          * printf("Step %d\n", step);
          * print_bodies(bodies, num_bodies);
          */
+    }
+
+    // gather how many bodies each rank has for gatherv
+    err = MPI_Gather(
+        &num_local_bodies, 1, MPI_INT,
+        rank == 0 ? ranks_num_local_bodies : NULL,
+        1, MPI_INT, 0, MPI_COMM_WORLD
+    );
+    if (err != MPI_SUCCESS) handle_mpi_errcode(err);
+    
+    // make count/disp arrs for gatherv of all ranks' bodies
+    int ranks_bodies_count_bytes[size];
+    int ranks_bodies_disp_bytes[size];
+    if (rank == 0) {
+        for (int r = 0; r < size; r++) {
+            ranks_bodies_count_bytes[r] = sizeof(Body) * ranks_num_local_bodies[r];
+            if (r < size-1) {
+                ranks_bodies_disp_bytes[r+1] = ranks_bodies_disp_bytes[r] + ranks_bodies_count_bytes[r]; 
+            }        
+        }
+    }
+    
+    // gather all the bodies back to root
+    err = MPI_Gatherv(
+        local_bodies, num_local_bodies * sizeof(Body), MPI_BYTE,
+        rank == 0 ? bodies: NULL,
+        rank == 0 ? ranks_bodies_count_bytes: NULL,
+        rank == 0 ? ranks_bodies_disp_bytes: NULL,
+        MPI_BYTE, 0, MPI_COMM_WORLD
+    );
+    if (err != MPI_SUCCESS) handle_mpi_errcode(err);
+
+    // sort all the bodies by id so that they print in the original order
+    if (rank == 0) {
+        qsort(bodies, num_bodies, sizeof(Body), compare_bodies_by_id);
     }
 
     if (rank == 0) {
