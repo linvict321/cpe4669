@@ -6,6 +6,7 @@
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible
 #define DT 0.01
+#define MASS_ORDER 1.0e15
 
 typedef struct {
     double x, y, z;      // Position
@@ -40,7 +41,7 @@ void initialize_bodies(Body *bodies, int n)
         bodies[i].ay = 0.0;
         bodies[i].az = 0.0;
 
-        bodies[i].mass = 1.0e10 + ((double)rand() / RAND_MAX) * 1.0e10;
+        bodies[i].mass = MASS_ORDER + ((double)rand() / RAND_MAX) * MASS_ORDER;
     }
 }
 

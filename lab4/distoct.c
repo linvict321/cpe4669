@@ -11,7 +11,7 @@
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
 #define DT 0.01
-#define MASS_ORDER 1.0e10
+#define MASS_ORDER 1.0e15
 #define ACCURACY 0.5  // google said this was the "sweet spot", though [0.5, 1] is a normal range
 #define INITIAL_WIDTH 100.0
 #define MAX_DEPTH 18 // because 63 bits can max store 9.2e18 and the way we store node ids
@@ -1002,7 +1002,7 @@ int main(int argc, char *argv[]) {
         if (num_local_bodies == 0) {
             free(local_bodies);
             local_bodies = NULL;
-        } else {
+        } else if (num_bodies_to_recv_total != 0 || num_bodies_to_send_total != 0) {
             tmp = (Body *)realloc(local_bodies, num_local_bodies * sizeof(Body));
             if (tmp == NULL) {
                 fprintf(stderr, "{Rank %d} - realloc failed when removing transferred local bodies!\n", rank);
@@ -1012,9 +1012,9 @@ int main(int argc, char *argv[]) {
         }
 
         // free all octree copies since we have to remake them next timestep
-        for (int r = 0; r < size; r++) {
-            free_octree(octree_ptrs[r]);
-        }
+        // for (int r = 0; r < size; r++) {
+        //     free_octree(octree_ptrs[r]);
+        // }
 
         err = MPI_Barrier(MPI_COMM_WORLD);
         handle_mpi_errcode(err);
@@ -1039,6 +1039,11 @@ int main(int argc, char *argv[]) {
     int ranks_bodies_count_bytes[size];
     int ranks_bodies_disp_bytes[size];
     if (rank == 0) {
+        for (int r = 0; r < size; r++) {
+            ranks_bodies_count_bytes[r] = 0;
+            ranks_bodies_disp_bytes[r] = 0;
+        }
+
         for (int r = 0; r < size; r++) {
             ranks_bodies_count_bytes[r] = sizeof(Body) * ranks_num_local_bodies[r];
             if (r < size-1) {
