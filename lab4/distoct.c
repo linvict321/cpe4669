@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <math.h>
 #include <time.h>
 #include <mpi.h>
@@ -9,10 +11,22 @@
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
 #define DT 0.01
-#define INITIAL_WIDTH 100.0
 #define MASS_ORDER 1.0e10
 #define ACCURACY 0.5  // google said this was the "sweet spot", though [0.5, 1] is a normal range
-// #define MAX_DEPTH 100
+#define INITIAL_WIDTH 100.0
+#define MAX_DEPTH 18 // because 63 bits can max store 9.2e18 and the way we store node ids
+
+// OctreeNode children statuses for compute_forces_dist
+#define NO_CHILDREN 3
+#define CHILDREN_NOT_RECEIVED 4
+#define CHILDREN_RECEIVED 5
+
+// Inter-rank octree communication
+#define TAG_NODE_REQUEST 1
+#define TAG_NODE_RESPONSE 2
+#define NORMAL_SERVICE 0
+#define STOP_SERVICE -1
+#define DONT_TRANSFER_BODY -1
 
 // currently only intended for up to 8 ranks at once due to the octree
 
@@ -35,33 +49,48 @@ typedef struct {
 } Box;
 
 typedef struct OctreeNode {
+    int64_t id;
+    int rank; // what rank's local octree this node belongs to
     double mass; // sum of bodies' masses
     double COMx, COMy, COMz; // weighted COM position
     double max_dim;
     Box bbox; // node bounding box
+    int childrenStatus;
     struct OctreeNode **childNodes; // NULL if this OctreeNode is a leaf node
 } OctreeNode;
 
+typedef struct ServArgs {
+    int rank;
+    int size;
+    OctreeNode* node;
+} ServArgs;
+
+typedef struct ServReq {
+    int command;
+    int64_t id;
+    Box bbox;
+} ServReq;
+
 /* Function prototypes */
 void initialize_bodies(Body *bodies, int n);
-void compute_forces(Body *bodies, int n);
 void update_bodies(Body *bodies, int n, double dt, int width);
 void print_bodies(Body *bodies, int n);
 
-void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode *octrees, int rank, int size);
-double compute_distance(double dx, double dy, double sz);
+void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode **octrees, int rank, int size);
+void *service_requests(void *args);
+
 int acceptance_test(double cell_size, double distance, double accuracy);
 void get_idxs_for_each_rank(int *starts, int *ends, int n, int size);
 void handle_mpi_errcode(int errcode);
 int body_is_inside_box(Box box, Body* body);
-OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies);
+OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth, int64_t id);
+OctreeNode *get_node(OctreeNode *node, int64_t id);
 void printOctree(OctreeNode *node, int depth);
 Box init_global_space(double width);
 Box* divide_box_into_octants(Box parent);
 Box merge_boxes(Box *boxes, int num_boxes);
 double get_box_max_dim(Box box);
-void send_body(Body body, int dst_rank);
-
+int int_pow(int base, int power);
 
 /*
  * Initialize bodies with random positions, velocities, and masses.
@@ -88,106 +117,6 @@ void initialize_bodies(Body *bodies, int n) {
             MASS_ORDER + ((double)rand() / RAND_MAX) * MASS_ORDER;
     }
 }
-
-double get_box_max_dim(Box box) {
-    double wx = box.maxx - box.minx;
-    double wy = box.maxy - box.miny;
-    double wz = box.maxz - box.minz;
-
-    double max_dim = wx;
-    if (wy > max_dim) max_dim = wy;
-    if (wz > max_dim) max_dim = wz;
-
-    return max_dim;
-}
-
- // writing new version right here
-void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode *octrees, int rank, int size) {
-    /* Reset acceleration */
-    for (int i = 0; i < n; i++) {
-        bodies[i].ax = 0.0;
-        bodies[i].ay = 0.0;
-        bodies[i].az = 0.0;
-    }
-    
-    // TODO: WRITE ALG FOR ANY OCTREE NODE to a body
-    // maybe need to have separate one for same vs diff rank octree node?
-    OctreeNode *node;
-    double dx, dy, dz, distance, distance_squared, acceleration;
-    for (int i = 0; i < n; i++) {
-        // for each body, go through all octrees (resursively as needed)
-        // to calc the forces on it --> its accels
-        for (int r = 0; r < size; r++) {
-            if (r == rank) {
-                node = local_octree;
-            } else {
-                node = octrees + r;
-            }
-
-            dx = node->COMx - bodies[i].x,
-            dy = node->COMy - bodies[i].y,
-            dz = node->COMz - bodies[i].z,
-            distance_squared = dx * dx + dy * dy + dz * dz + SOFTENING;
-            distance = sqrt(distance_squared);
-
-            if (acceptance_test(node->max_dim, distance, ACCURACY) == 1) {
-                // the acceleration of body i due to node (treated as one body)
-                double acceleration = G * node->mass / distance_squared;
-
-                bodies[i].ax += acceleration * dx / distance;
-                bodies[i].ay += acceleration * dy / distance;
-                bodies[i].az += acceleration * dz / distance;
-            } else {
-                // do i need to adjust this to be recursive?
-                // or i could put into a while loop with the 
-                // acceptance test as the condition
-
-            }
-        }
-    }
-}
-
-/* Sequential O(N^2) force calculation. */
-void compute_forces(Body *bodies, int n) {
-    /* Reset acceleration */
-    for (int i = 0; i < n; i++) {
-        bodies[i].ax = 0.0;
-        bodies[i].ay = 0.0;
-        bodies[i].az = 0.0;
-    }
-
-    /* Compute gravitational forces */
-    for (int i = 0; i < n; i++) {
-
-        for (int j = 0; j < n; j++) {
-
-            if (i == j)
-                continue;
-
-            double dx = bodies[j].x - bodies[i].x;
-            double dy = bodies[j].y - bodies[i].y;
-            double dz = bodies[j].z - bodies[i].z;
-
-            double distance_squared =
-                dx * dx +
-                dy * dy +
-                dz * dz +
-                SOFTENING;
-
-            double distance = sqrt(distance_squared);
-
-            // the acceleration of body i due to j
-            double acceleration =
-                G * bodies[j].mass /
-                distance_squared;
-
-            bodies[i].ax += acceleration * dx / distance;
-            bodies[i].ay += acceleration * dy / distance;
-            bodies[i].az += acceleration * dz / distance;
-        }
-    }
-}
-
 
 /*
  * Update velocity and position using a simple Euler integration.
@@ -239,6 +168,7 @@ void print_bodies(Body *bodies, int n) {
     }
 }
 
+
 void printOctree(OctreeNode *node, int depth) {
     if (node == NULL) {
         return;
@@ -249,7 +179,7 @@ void printOctree(OctreeNode *node, int depth) {
         printf("  ");
     }
 
-    printf("Node:\n");
+    printf("Node (id = %" PRId64 "):\n", node->id);
 
     for (int i = 0; i < depth; i++) {
         printf("  ");
@@ -319,43 +249,6 @@ void get_idxs_for_each_rank(int *starts, int *ends, int n, int size) {
     }
 }
 
-void calc_OctreeNode_extrema(Box box, Body* bodies, int num_bodies) {
-    if (bodies == NULL || num_bodies < 1) {
-        return;
-    }
-    
-    double x, y, z;
-    box.minx = box.maxx = bodies[0].x;
-    box.miny = box.maxy = bodies[0].y;
-    box.minz = box.maxz = bodies[0].z;
-    for (int i = 1; i < num_bodies; i++) {
-        x = bodies[i].x; y = bodies[i].y; z = bodies[i].z;
-        if (x < box.minx) box.minx = x;
-        if (x > box.maxx) box.maxx = x;
-        if (y < box.miny) box.miny = y;
-        if (y > box.maxy) box.maxy = y;
-        if (z < box.minz) box.minz = z;
-        if (z > box.maxz) box.maxz = z;
-    }
-}
-
-void calc_global_spatial_extrema(Box global, Box* locals, int num_locals) {
-    if (num_locals < 1 || locals == NULL) {
-        return;
-    }
-    global.minx = locals[0].minx; global.maxx = locals[0].maxx;
-    global.miny = locals[0].miny; global.maxy = locals[0].maxy;
-    global.minz = locals[0].minz; global.maxz = locals[0].maxz;
-    for (int i = 1; i < num_locals; i++) {
-        if (locals[i].minx < global.minx) global.minx = locals[i].minx;
-        if (locals[i].maxx > global.maxx) global.maxx = locals[i].maxx;
-        if (locals[i].miny < global.miny) global.miny = locals[i].miny;
-        if (locals[i].maxy > global.maxy) global.maxy = locals[i].maxy;
-        if (locals[i].minz < global.minz) global.minz = locals[i].minz;
-        if (locals[i].maxz > global.maxz) global.maxz = locals[i].maxz;
-    }
-}
-
 /*
 * Returns 1 if body is within box, else returns 0
 */
@@ -367,13 +260,34 @@ int body_is_inside_box(Box box, Body* body) {
 }
 
 /*
+* Only works for power
+*/
+int int_pow(int base, int power) {
+    if (power < 0) {
+        fprintf(stderr, "int_pow only supports positive exponents, %d was input\n", power);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return -1;
+    } else if (power == 0) {
+        return 1;
+    } else {
+        int val = base;
+        for (int i = 1; i < power; i++) {
+            val *= base;
+        }
+        return val;
+    }
+}
+
+/*
 * TODO: adjust so only bodies that are within the box
 * should be passed in for bodies when recursing to the next depth
 */
-OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies) {
+OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth, int64_t id) {
     OctreeNode *node = (OctreeNode *)calloc(1, sizeof(OctreeNode));
     node->bbox = box;
     node->max_dim = get_box_max_dim(box);
+    node->id = id;
+    MPI_Comm_rank(MPI_COMM_WORLD, &(node->rank));
 
     // calc total mass and COM
     int bodies_in_node = 0;
@@ -393,14 +307,21 @@ OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies) {
     }
 
     // break up node into another 8 octree nodes if more than 1 body is within
-    if (bodies_in_node > 1) {
+    if ((bodies_in_node > 1) && (depth < MAX_DEPTH)) {
         Box *child_boxes = divide_box_into_octants(box);
         node->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
         for (int i = 0; i < 8; i++) {
-            node->childNodes[i] = build_local_octree(child_boxes[i], bodies, num_bodies);
+            // add another digit to the parent id. tree root is the least-sig-digit
+            int64_t child_id = id + (i+1)*int_pow(10, depth);
+            node->childNodes[i] = build_local_octree(child_boxes[i], bodies, num_bodies, depth+1, child_id);
         }
+        node->childrenStatus = CHILDREN_NOT_RECEIVED; // for inter-rank sending octrees in compute_forces_dist
         free(child_boxes);
     } else {
+        if (depth >= MAX_DEPTH) {
+            fprintf(stderr, "WARNING, MAX DEPTH REACHED WHILE THERE WERE STILL %d BODIES IN THE NODE\n", bodies_in_node);
+        }
+        node->childrenStatus = NO_CHILDREN;
         node->childNodes = NULL;
     }
 
@@ -548,15 +469,6 @@ int acceptance_test(double cell_size, double distance, double accuracy) {
     return (cell_size / distance) < accuracy;
 }
 
-double compute_distance(double dx, double dy, double dz) {
-    return sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2) + SOFTENING);
-}
-
-void send_body(Body body, int dst_rank) {
-    
-    return;
-}
-
 /* 
 * MPI error handling snippet from
 * https://www.paulnorvig.com/guides/introduction-to-mpi-with-c.html
@@ -567,15 +479,202 @@ void handle_mpi_errcode(int errcode) {
         int resultlen;
         MPI_Error_string(errcode, err_string, &resultlen);
         fprintf(stderr, err_string);
-        MPI_Finalize();
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 }
 
+double get_box_max_dim(Box box) {
+    double wx = box.maxx - box.minx;
+    double wy = box.maxy - box.miny;
+    double wz = box.maxz - box.minz;
+
+    double max_dim = wx;
+    if (wy > max_dim) max_dim = wy;
+    if (wz > max_dim) max_dim = wz;
+
+    return max_dim;
+}
+
+int box_eq(Box a, Box b) {
+    double tol = 1e-6; // guess for what works
+    if (abs(a.minx - b.minx) > tol) return 0;
+    if (abs(a.miny - b.miny) > tol) return 0;
+    if (abs(a.minz - b.minz) > tol) return 0;
+
+    if (abs(a.maxx - b.maxx) > tol) return 0;
+    if (abs(a.maxy - b.maxy) > tol) return 0;
+    if (abs(a.maxz - b.maxz) > tol) return 0;
+
+    return 1; // ignore box lims
+}
+
+/*
+* traverse the tree using least-sig-digit of tree as root
+*/
+OctreeNode *get_node(OctreeNode *node, int64_t id) {
+    if (id < 0) {
+        fprintf(stderr, "Node id (%" PRId64 ") < 0  was passed into get_node is required\n", id);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return NULL;
+    }
+    
+    int digit;
+    int depth = 0;
+    int64_t remaining = id;
+    while (remaining > 0 && depth < MAX_DEPTH) {
+        if (node->childNodes == NULL) {
+            fprintf(stderr, "Node id (%" PRId64 ") was not found!\n", id);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return NULL;
+        }
+
+        depth++;
+        digit = remaining % 10;
+        remaining /= 10; // int div drops remainder
+
+        node = node->childNodes[digit-1]; // digit-1 since id digits are 1-indexed so 0 can be the sentinel
+    }
+    if (node->id != id) {
+        fprintf(stderr, "Node id %" PRId64 " was requested but node id %" PRId64 " was incorrectly returned instead!\n", id, node->id);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return NULL;
+    }
+    return node;
+}
+
+
+/*
+* Recursive helper function for adjusting the accel of one body due to one octree node
+*/
+void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) {
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    double dx = node->COMx - body->x;
+    double dy = node->COMy - body->y;
+    double dz = node->COMz - body->z;
+    double distance_squared = dx * dx + dy * dy + dz * dz + SOFTENING;
+    double distance = sqrt(distance_squared);
+
+    if ((acceptance_test(node->max_dim, distance, ACCURACY) == 1)
+    || (node->childrenStatus == NO_CHILDREN)) {
+        
+        // the acceleration of body i due to node (treated as one body)
+        double acceleration = G * node->mass / distance_squared;
+
+        body->ax += acceleration * dx / distance;
+        body->ay += acceleration * dy / distance;
+        body->az += acceleration * dz / distance;
+
+    } else { // have to step one layer deeper into octree
+        // request node from other rank if not yet cached
+        if ((node->childrenStatus == CHILDREN_NOT_RECEIVED)
+        && (node->rank != rank)) { // if node->rank == rank, we already have the whole tree
+            
+            node->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
+            Box *boxes_to_verify_nodes = divide_box_into_octants(node->bbox);
+            for (int r = 0; r < 8; r++) {
+                int64_t child_id_to_req = node->id + (r+1)*int_pow(10, depth);
+                ServReq req = {
+                    .command = NORMAL_SERVICE,
+                    .id = child_id_to_req,
+                    .bbox = boxes_to_verify_nodes[r]
+                };
+                MPI_Send(
+                    &req, sizeof(ServReq), MPI_BYTE,
+                    node->rank, TAG_NODE_REQUEST,
+                    MPI_COMM_WORLD
+                );
+                MPI_Recv(
+                    node->childNodes[r], sizeof(OctreeNode), MPI_BYTE,
+                    node->rank, TAG_NODE_RESPONSE,
+                    MPI_COMM_WORLD, MPI_STATUS_IGNORE
+                );
+            
+                compute_force_on_body_due_to_node(body, node->childNodes[r], depth+1);
+            }
+            free(boxes_to_verify_nodes);
+        } else { // already have children cached
+            for (int r = 0; r < 8; r++) {
+                compute_force_on_body_due_to_node(body, node->childNodes[r], depth+1);
+            }
+        }
+    }
+}
+
+void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode **octrees, int rank, int size) {
+    /* Reset acceleration */
+    for (int i = 0; i < n; i++) {
+        bodies[i].ax = 0.0;
+        bodies[i].ay = 0.0;
+        bodies[i].az = 0.0;
+    }
+    
+    // for each body, calculate the forces/accels due to all octrees
+    OctreeNode *node;
+    for (int i = 0; i < n; i++) {
+        // for each body, go through all octrees (resursively as needed) to calc the forces on it --> its accels
+        for (int j = 0; j < size; j++) {
+            int r = (rank + j) % size; // so all ranks are staggered for which octree to request from, i.e. so not all ranks are requesting rank 0 for octree info, then all rank 1, etc.
+            
+            // use the already-fully-cached local octree if it's the current rank rather than rebuilding
+            if (r == rank) node = local_octree;
+            else           node = octrees[r];
+            
+            compute_force_on_body_due_to_node(bodies+i, node, 0);
+        }
+    }
+    // free all cached non-local octrees
+    for (int r = 0; r < size; r++) {
+        free_octree(octrees[r]); // might need to switch octrees to double pointer for this to work
+    }
+}
+
+void *service_requests(void *arg) {
+    ServArgs *args = (ServArgs *)arg;
+    OctreeNode *tree = args->node;
+    
+    MPI_Status status;
+    ServReq req;
+    OctreeNode *node;
+
+    // service loop ends when thread receives shutdown msg from same rank
+    while(1) {
+        MPI_Recv(
+            &req, sizeof(ServReq), MPI_BYTE,
+            MPI_ANY_SOURCE, TAG_NODE_REQUEST,
+            MPI_COMM_WORLD, &status
+        );
+
+        if (req.command == STOP_SERVICE) break;
+
+        node = get_node(tree, req.id);
+        if (node == NULL) {
+            fprintf(stderr, "{Rank %d Service Thread} - Node id (%" PRId64 ") not found!\n", args->rank, req.id);
+            fprintf(stderr, "{Rank %d Service Thread} - Local Tree Contents:\n", args->rank);
+            printOctree(tree, 0);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return NULL;
+        }
+
+        MPI_Send(
+            node, sizeof(OctreeNode), MPI_BYTE,
+            status.MPI_SOURCE, TAG_NODE_RESPONSE,
+            MPI_COMM_WORLD
+        );
+    }
+    return NULL;
+}
+
 int main(int argc, char *argv[]) {
-    int err;
-    err = MPI_Init(&argc, &argv);
+    int err, provided;
+    err = MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
     handle_mpi_errcode(err);
+
+    if (provided < MPI_THREAD_MULTIPLE) {
+        fprintf(stderr, "MPI_THREAD_MULTIPLE is required\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
     int size; //mum of processes
     int rank;
@@ -586,8 +685,7 @@ int main(int argc, char *argv[]) {
         if (rank == 0) {
             fprintf(stderr, "Cannot distribute across an odd number or more than 8 ranks. Aborting all ranks.\n");
         }
-        MPI_Finalize();
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     // default values
@@ -644,8 +742,7 @@ int main(int argc, char *argv[]) {
         
         if (bodies == NULL) {
             fprintf(stderr, "Error allocating memory.\n");
-            MPI_Finalize();
-            return EXIT_FAILURE;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
         
         srand(0);
@@ -709,8 +806,7 @@ int main(int argc, char *argv[]) {
         local_bodies = (Body *)calloc(num_local_bodies, sizeof(Body));
         if (num_local_bodies > 0 && local_bodies == NULL) {
             fprintf(stderr, "Error allocating memory for local_bodies.\n");
-            MPI_Finalize();
-            return EXIT_FAILURE;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         // recv local bodies from root rank
@@ -722,34 +818,149 @@ int main(int argc, char *argv[]) {
         if (err != MPI_SUCCESS) handle_mpi_errcode(err);
     }
     
+    pthread_t serv_thread;
     OctreeNode octrees[size];
     for (int step = 0; step < num_steps; step++) {
         // recalculate local octree
-        OctreeNode *local_octree = build_local_octree(local_parent_box, local_bodies, num_local_bodies);
+        OctreeNode *local_octree = build_local_octree(local_parent_box, local_bodies, num_local_bodies, 0, 0);
         // printOctree(local_octree, 0);
 
         // every rank gets each others' local parent octree
         err = MPI_Allgather(
             local_octree, sizeof(OctreeNode), MPI_BYTE,
-            octrees, size * sizeof(OctreeNode), MPI_BYTE, MPI_COMM_WORLD
+            octrees, sizeof(OctreeNode), MPI_BYTE, MPI_COMM_WORLD
         );
+        OctreeNode *octree_ptrs[size];
+        for (int r = 0; r < size; r++) {
+            octree_ptrs[r] = (OctreeNode *)calloc(1, sizeof(OctreeNode)); // do so can use free_octree later
+            *(octree_ptrs[r]) = octrees[r]; // copy parent node values
+        }
 
-        compute_forces_dist(local_bodies, num_local_bodies, local_octree, octrees, rank, size);
+        ServArgs serv_args = {.rank = rank, .size = size, .node = local_octree};
+        err = pthread_create(&serv_thread, NULL, service_requests, &serv_args);
+        if (err != 0) {
+            fprintf(stderr, "Rank %d: pthread_create failed: %d\n", rank, err);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
 
-        update_bodies(bodies, num_bodies, DT, INITIAL_WIDTH);
+        compute_forces_dist(local_bodies, num_local_bodies, local_octree, octree_ptrs, rank, size);
+        update_bodies(local_bodies, num_local_bodies, DT, INITIAL_WIDTH);
         
-        int num_local_bodies_removed = 0;
+        // main calc thread waits for other ranks to finish, while service thread continues servicing
+        err = MPI_Barrier(MPI_COMM_WORLD);
+        handle_mpi_errcode(err);
+
+        // now that all ranks finished calcs, send service thread stop signal
+        ServReq stop = {STOP_SERVICE, -1, {0}};
+        MPI_Send(&stop, sizeof(ServReq), MPI_BYTE, rank, TAG_NODE_REQUEST, MPI_COMM_WORLD);
+
+        err = pthread_join(serv_thread, NULL);
+        if (err != 0) {
+            fprintf(stderr, "pthread_join failed: %d\n", err);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        // identify any bodies that moved into a different rank's space
+        int ranks_to_transfer_bodies_to[num_local_bodies];
+        int num_bodies_to_send_per_rank[8] = {0};
+        int num_bodies_to_send_total = 0;
         for (int i = 0; i < num_local_bodies; i++) {
-            if (body_is_inside_box(local_parent_box, local_bodies + i) == 0) {
-                //TODO: find which rank to send the body to
-                // MPI_Send(local_bodies[i]);
+            ranks_to_transfer_bodies_to[i] = DONT_TRANSFER_BODY;
+        }
+        for (int i = 0; i < num_local_bodies; i++) {
+            if (!body_is_inside_box(local_parent_box, local_bodies + i)) {
+                // find and store which rank to send the body to
+                for (int r = 0; r < size; r++) {
+                    if (r == rank) continue; // no need to check the current rank
+                    if (body_is_inside_box(octrees[r].bbox, local_bodies + i)) {
+                        ranks_to_transfer_bodies_to[i] = r;
+                        num_bodies_to_send_per_rank[r]++;
+                        num_bodies_to_send_total++;
+                        break;
+                    }
+                }
             }
         }
         
-        //TODO: now do an all-to-all where each rank tells the other ranks
-        // how many bodies they're sending said rank. Then do send/recv loops
-        // based on those counts
+        // each rank tells the other ranks how many bodies they're sending them.
+        int num_bodies_to_recv_per_rank[8] = {0};
+        MPI_Alltoall(
+            num_bodies_to_send_per_rank, 1, MPI_INT,
+            num_bodies_to_recv_per_rank, 1, MPI_INT,
+            MPI_COMM_WORLD
+        );
         
+        // make send/recv amnt/disp arrays for Alltoallv
+        int num_bodies_to_recv_total = 0;
+        int num_bytes_to_send_per_rank[8] = {0};
+        int send_disp_bodies_per_rank[8] = {0};
+        int send_disp_bytes_per_rank[8] = {0};
+        int num_bytes_to_recv_per_rank[8] = {0};
+        int recv_disp_bytes_per_rank[8] = {0};
+        
+        for (int r = 0; r < size; r++) {
+            num_bodies_to_recv_total += num_bodies_to_recv_per_rank[r];
+            
+            num_bytes_to_send_per_rank[r] = sizeof(Body) * num_bodies_to_send_per_rank[r];
+            num_bytes_to_recv_per_rank[r] = sizeof(Body) * num_bodies_to_recv_per_rank[r]; 
+            
+            if (r < size-1) {
+                send_disp_bodies_per_rank[r+1] = send_disp_bodies_per_rank[r] + num_bodies_to_send_per_rank[r]; 
+                send_disp_bytes_per_rank[r+1] = send_disp_bytes_per_rank[r] + num_bytes_to_send_per_rank[r]; 
+                recv_disp_bytes_per_rank[r+1] = recv_disp_bytes_per_rank[r] + num_bytes_to_recv_per_rank[r]; 
+            }        
+        }
+        
+        // make room in recv buff for incoming new bodies if necessary
+        Body *tmp;
+        if (num_bodies_to_recv_total > 0) {
+            tmp = (Body *)realloc(local_bodies, 
+                (num_local_bodies + num_bodies_to_recv_total) * sizeof(Body));
+            if (tmp != NULL) {
+                local_bodies = tmp;
+            } else fprintf(stderr, "{Rank %d} - realloc failed when removing transferred local bodies!\n", rank);
+        }
+            
+        // assemble arr of bodies for sending to other ranks
+        Body bodies_to_send[num_bodies_to_send_total];
+        int num_bodies_inserted_per_rank[8] = {0};
+        int idxs_of_sent_bodies[num_bodies_to_send_total];
+        int j = 0;
+        for (int i = 0; i < num_local_bodies; i++) {
+            int r = ranks_to_transfer_bodies_to[i];
+            if (r == DONT_TRANSFER_BODY) {
+                continue;
+            }
+            int insert_idx = send_disp_bodies_per_rank[r] + num_bodies_inserted_per_rank[r];
+            num_bodies_inserted_per_rank[r]++;
+            bodies_to_send[insert_idx] = bodies[i];
+            idxs_of_sent_bodies[j++] = i;
+        }
+
+        // Now actually send the bodies to each other (Alltoallv?)
+        MPI_Alltoallv(
+            bodies_to_send,
+            num_bytes_to_send_per_rank, send_disp_bytes_per_rank,
+            MPI_BYTE,
+            local_bodies + num_local_bodies, // directly recv the new bodies into the bodies arr
+            num_bytes_to_recv_per_rank, recv_disp_bytes_per_rank,
+            MPI_BYTE,
+            MPI_COMM_WORLD
+        );
+
+        // remove the old local_bodies that got sent to dif ranks
+        for (int i = 0; i < num_bodies_to_send_total; i++) {
+            int idx_to_replace = idxs_of_sent_bodies[i];
+            local_bodies[idx_to_replace] = local_bodies[(num_local_bodies-1) - i];
+        }
+
+        num_local_bodies = num_local_bodies + num_bodies_to_recv_total 
+                                            - num_bodies_to_send_total;
+        tmp = (Body *)realloc(local_bodies, num_local_bodies * sizeof(Body));
+        if (tmp != NULL) {
+            local_bodies = tmp;
+        } else fprintf(stderr, "{Rank %d} - realloc failed when removing transferred local bodies!\n", rank);
+
         err = MPI_Barrier(MPI_COMM_WORLD);
         handle_mpi_errcode(err);
 

@@ -6,7 +6,7 @@ Alternatively for our lab, to compile and run use
 
 ```powershell
 mpicc -g -Wall -pedantic -O0 -pthread -o distoct distoct.c -lm
-mpiexec -np <NUM_RANKS> ./distoct <NUM_BODIES> <NUM_STEPS>
+mpiexec -np <NUM_RANKS> ./distoct.exe <NUM_BODIES> <NUM_STEPS>
 ```
 
 To compile with tracing for profiling:
