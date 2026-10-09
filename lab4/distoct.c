@@ -11,7 +11,7 @@
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
 #define DT 0.01
-#define MASS_ORDER 1.0e15
+#define MASS_ORDER 1.0e13
 #define ACCURACY 0.5  // google said this was the "sweet spot", though [0.5, 1] is a normal range
 #define INITIAL_WIDTH 100.0
 #define MAX_DEPTH 18 // because 63 bits can max store 9.2e18 and the way we store node ids
