@@ -12,7 +12,7 @@
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
 #define DT 0.01
 #define MASS_ORDER 1.0e13
-#define ACCURACY 0.5  // google said this was the "sweet spot", though [0.5, 1] is a normal range
+#define ACCURACY 0.5  // google said 0.5 was the "sweet spot", though [0.5, 1] is a normal range
 #define INITIAL_WIDTH 100.0
 #define MAX_DEPTH 256 // arbitrary rn
 #define STARTING_NODE_TABLE_CAP 256 // somewhat arbitrary
@@ -549,13 +549,13 @@ double get_box_max_dim(Box box) {
 
 int box_eq(Box a, Box b) {
     double tol = 1e-6; // guess for what works
-    if (abs(a.minx - b.minx) > tol) return 0;
-    if (abs(a.miny - b.miny) > tol) return 0;
-    if (abs(a.minz - b.minz) > tol) return 0;
+    if (fabs(a.minx - b.minx) > tol) return 0;
+    if (fabs(a.miny - b.miny) > tol) return 0;
+    if (fabs(a.minz - b.minz) > tol) return 0;
 
-    if (abs(a.maxx - b.maxx) > tol) return 0;
-    if (abs(a.maxy - b.maxy) > tol) return 0;
-    if (abs(a.maxz - b.maxz) > tol) return 0;
+    if (fabs(a.maxx - b.maxx) > tol) return 0;
+    if (fabs(a.maxy - b.maxy) > tol) return 0;
+    if (fabs(a.maxz - b.maxz) > tol) return 0;
 
     return 1; // ignore box lims
 }
@@ -606,6 +606,11 @@ OctreeNode *get_node(OctreeNode *node, int id) {
 * Recursive helper function for adjusting the accel of one body due to one octree node
 */
 void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) {
+    // initial check to avoid having body act on itself
+    if (body_is_inside_box(node->bbox, body) && (node->childNodes == NULL)) {
+        return;
+    }
+
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -615,8 +620,9 @@ void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) 
     double distance_squared = dx * dx + dy * dy + dz * dz + SOFTENING;
     double distance = sqrt(distance_squared);
 
-    if ((acceptance_test(node->max_dim, distance, ACCURACY) == 1)
-    || (node->childrenStatus == NO_CHILDREN)) {
+    if (((acceptance_test(node->max_dim, distance, ACCURACY) == 1)
+         || (node->childrenStatus == NO_CHILDREN))
+    && !body_is_inside_box(node->bbox, body)) {
         
         // the acceleration of body i due to node (treated as one body)
         double acceleration = G * node->mass / distance_squared;
@@ -731,6 +737,11 @@ void *service_requests(void *arg) {
             return NULL;
         }
         node = local_node_table.nodes[req.id];
+        if (!box_eq(node->bbox, req.bbox)) {
+            fprintf(stderr, "Responded (printed first) box did not match the requested (second) box:\n");
+            print_boxes(&(node->bbox), 1);
+            print_boxes(&(req.bbox), 1);
+        }
         if (node == NULL) {
             fprintf(stderr, "{Rank %d Service Thread} - Node id (%d) not found!\n", args->rank, req.id);
             fprintf(stderr, "{Rank %d Service Thread} - Local Tree Contents:\n", args->rank);
