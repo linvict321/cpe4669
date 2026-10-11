@@ -3,69 +3,57 @@ import sys
 import numpy as np
 import time
 
-def distributed_k_way_merge(all_runs, comm):
+def distributed_k_way_merge_sort(arr, comm):
     rank = comm.Get_rank()
-    process_count = comm.Get_size()
+    size = comm.Get_size()
 
+    counts = np.empty(size, dtype=np.int64)
+    displs = None
     if rank == 0:
-        assignments = [[] for _ in range(process_count)]
+        N = len(arr)
+        for i in range(size):
+            counts[i] = N // size + (i < N % size)
+        displs = np.zeros(size, dtype=np.int64)
+        displs[1:] = np.cumsum(counts[:-1])
+    comm.Bcast(counts, root=0)
 
-        for run_index, run in enumerate(all_runs):
-            target_rank = run_index % process_count
-            assignments[target_rank].append(run)
+    # print(f'rank {rank} - counts: {counts}')
+    local_arr = np.empty(counts[rank], dtype=np.int64)
 
-    else:
-            assignments = None
-    local_runs = comm.scatter(assignments, root = 0)
-    for local_run in local_runs:
-        local_run.sort()
-
-    local_result = local_k_way_merge(local_runs)
+    comm.Scatterv(
+        [arr, counts, displs, MPI.INT64_T] if rank == 0 else None,
+        [local_arr, MPI.INT64_T],
+        root=0
+    )
+    local_arr.sort()
+    # print(f'Rank {rank} in dist_k_merge - local_arr: {local_arr}\n')
+    
+    # reduce pattern
     step = 1
-    while step < process_count:
+    while step < size:
         group_size = 2 * step
         if rank % group_size == 0:
             partner = rank + step
-            if partner < process_count:
+            if partner < size:
                 #recv sorted result from partner process
                 recieved = comm.recv(source = partner, tag = step,)
 
                 #recv wins round by merging both lists
-                local_result = merge(local_result, recieved, )
+                local_arr = merge(local_arr, recieved, )
         elif rank % group_size == step:
             partner = rank - step
 
             #send proc result to lower ranked processes
             comm.send(
-                local_result,
+                local_arr,
                 dest=partner,
                 tag=step,
             )
             return None
 
         step *= 2
-    return local_result if rank == 0 else None
-
-#used merge sort algorithm
-def local_k_way_merge(sorted_lists):
-    runs = sorted_lists
-    if not runs: 
-        return []
-    while len(runs) > 1:
-        next_round = []
-
-        #merge adj runs
-        for i in range(0, len(runs), 2):
-            if i + 1 < len(runs):
-                next_round.append(merge(runs[i], runs[i + 1]))
-            else:
-                next_round.append(runs[i])
-
-        runs = next_round
-
-    return runs[0]
+    return local_arr if rank == 0 else None
     
-
 def merge(left, right):
     result = []
     i = 0
@@ -124,33 +112,21 @@ def main():
         #checksum for verification
         input_checksum = int(np.sum(arr))
 
-        # calculate how the arr will be split per node
-        starts = np.zeros((size), dtype=int)
-        for i in range(size):
-            if i == 0:
-                continue
-            starts[i] = i * (N // size)
-
-        ends = np.zeros((size), dtype=int)
-        for i in range(size-1):
-            ends[i] = starts[i+1]
-        ends[-1] = N
-
-        counts = ends - starts
-
-        unsorted_runs = []
-        for i in range(size):
-            unsorted_runs.append(arr[starts[i] : ends[i]])
 
     # barrier
     comm.Barrier()
-    time_start = time.time()
+    time_start = MPI.Wtime()
 
-    final_result = distributed_k_way_merge(unsorted_runs, comm)
+    final_result = distributed_k_way_merge_sort(arr, comm)
+
+    comm.Barrier()
+    time_end = MPI.Wtime()
+    elapsed = time_end - time_start
+
+    max_elapsed = comm.reduce(elapsed, op=MPI.MAX, root=0)
 
     if rank == 0:
-        time_end = time.time()
-        print(f"Completed in {time_end - time_start:.2f} seconds")
+        print(f"Completed in {max_elapsed:.2f} seconds")
 
         #check all adjacent values are in nondecresing order
         is_sorted = True
@@ -182,7 +158,7 @@ def main():
             print(f"np: {np_result}")
             print(f"merge: {final_result}")
 
-        print(f"Result: N={N} ranks={size} time={time_end - time_start:.4f} pass={(passed)}")
+        print(f"Result: N={N} ranks={size} time={max_elapsed:.4f} pass={(passed)}")
 
 if __name__ == '__main__':
     main()        
