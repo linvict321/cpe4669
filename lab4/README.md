@@ -33,6 +33,8 @@ If getting errors when running with the higher number of ranks, run instead usin
 python nbody_tester.py <NUM_BODIES> <NUM_STEPS> --oversubscribe
 ```
 
+Can also add the `--nbody_use_hard_boundaries` flag for the implementations to still match when a body was trying to go out of the original space.
+
 In WSL, the tester prefers Linux binaries `nbody` and `distoct`; on Windows,
 it prefers `nbody.exe` and `distoct.exe`. If Open MPI reports insufficient slots, run:
 

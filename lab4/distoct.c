@@ -12,9 +12,9 @@
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
 #define DT 0.01
 #define MASS_ORDER 1.0e13
-#define ACCURACY 0.5  // google said 0.5 was the "sweet spot", though [0.5, 1] is a normal range
+#define ACCURACY 0.01  // google said 0.5 was the "sweet spot", though [0.5, 1] is a normal range
 #define INITIAL_WIDTH 100.0
-#define MAX_DEPTH 256 // arbitrary rn
+#define MAX_DEPTH 1024 // arbitrary rn
 #define STARTING_NODE_TABLE_CAP 256 // somewhat arbitrary
 
 // OctreeNode children statuses for compute_forces_dist
@@ -105,6 +105,7 @@ Box merge_boxes(Box *boxes, int num_boxes);
 double get_box_max_dim(Box box);
 int body_is_inside_box(Box box, Body* body);
 int compare_bodies_by_id(const void *a, const void *b);
+void print_boxes(Box *boxes, int n);
 
 OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth);
 void free_octree_recursively(OctreeNode *node);
@@ -365,6 +366,7 @@ OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth)
     } else {
         if (depth >= MAX_DEPTH) {
             fprintf(stderr, "WARNING, MAX DEPTH REACHED WHILE THERE WERE STILL %d BODIES IN THE NODE\n", bodies_in_node);
+            print_boxes(&box, 1);
         }
         node->childrenStatus = NO_CHILDREN;
         node->childNodes = NULL;
