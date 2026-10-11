@@ -14,7 +14,8 @@
 #define MASS_ORDER 1.0e13
 #define ACCURACY 0.5  // google said this was the "sweet spot", though [0.5, 1] is a normal range
 #define INITIAL_WIDTH 100.0
-#define MAX_DEPTH 18 // because 63 bits can max store 9.2e18 and the way we store node ids
+#define MAX_DEPTH 256 // arbitrary rn
+#define STARTING_NODE_TABLE_CAP 256 // somewhat arbitrary
 
 // OctreeNode children statuses for compute_forces_dist
 #define NO_CHILDREN 3
@@ -50,7 +51,7 @@ typedef struct {
 } Box;
 
 typedef struct OctreeNode {
-    int64_t id;
+    int id;
     int rank; // what rank's local octree this node belongs to
     double mass; // sum of bodies' masses
     double COMx, COMy, COMz; // weighted COM position
@@ -60,6 +61,12 @@ typedef struct OctreeNode {
     struct OctreeNode **childNodes; // NULL if this OctreeNode is a leaf node
 } OctreeNode;
 
+typedef struct NodeTable {
+    OctreeNode **nodes;
+    int count;     // Number of registered nodes
+    int cap;  // Number of allocated pointer slots
+} NodeTable;
+
 typedef struct ServArgs {
     int rank;
     int size;
@@ -68,31 +75,45 @@ typedef struct ServArgs {
 
 typedef struct ServReq {
     int command;
-    int64_t id;
+    int id;
     Box bbox;
 } ServReq;
+
+typedef struct ServResp {
+    OctreeNode node;
+    int childIds[8];
+} ServResp;
+
+static NodeTable local_node_table = {0};
 
 /* Function prototypes */
 void initialize_bodies(Body *bodies, int n);
 void update_bodies(Body *bodies, int n, double dt, int width);
 void print_bodies(Body *bodies, int n);
 
-void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode **octrees, int rank, int size);
-void *service_requests(void *args);
-
-int acceptance_test(double cell_size, double distance, double accuracy);
 void get_idxs_for_each_rank(int *starts, int *ends, int n, int size);
 void handle_mpi_errcode(int errcode);
-int body_is_inside_box(Box box, Body* body);
-OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth, int64_t id);
-OctreeNode *get_node(OctreeNode *node, int64_t id);
-void printOctree(OctreeNode *node, int depth);
+
+int acceptance_test(double cell_size, double distance, double accuracy);
+void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNode **octrees, int rank, int size);
+void *service_requests(void *args);
+int int_pow(int base, int power);
+
 Box init_global_space(double width);
 Box* divide_box_into_octants(Box parent);
 Box merge_boxes(Box *boxes, int num_boxes);
 double get_box_max_dim(Box box);
-int int_pow(int base, int power);
+int body_is_inside_box(Box box, Body* body);
 int compare_bodies_by_id(const void *a, const void *b);
+
+OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth, int *id);
+void free_octree_recursively(OctreeNode *node);
+void free_OctreeNode(OctreeNode *node);
+OctreeNode *get_node(OctreeNode *node, int id);
+void printOctree(OctreeNode *node, int depth);
+
+void clear_NodeTable(NodeTable *node_table);
+void insert_node_into_node_table(OctreeNode *node);
 
 /*
  * Initialize bodies with random positions, velocities, and masses.
@@ -182,7 +203,7 @@ void printOctree(OctreeNode *node, int depth) {
         printf("  ");
     }
 
-    printf("Node (id = %" PRId64 "):\n", node->id);
+    printf("Node (id = %d):\n", node->id);
 
     for (int i = 0; i < depth; i++) {
         printf("  ");
@@ -281,15 +302,32 @@ int int_pow(int base, int power) {
     }
 }
 
+void insert_node_into_node_table(OctreeNode *node) {
+    if (local_node_table.count >= local_node_table.cap) {
+        local_node_table.cap *= 2;
+        OctreeNode **tmp = (OctreeNode **)realloc(local_node_table.nodes, 
+                            local_node_table.cap * sizeof(OctreeNode *));
+        if (tmp == NULL) {
+            fprintf(stderr, "realloc failed while doubling local_node_table cap!\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        local_node_table.nodes = tmp;
+    }
+
+    node->id = local_node_table.count;
+    local_node_table.nodes[local_node_table.count++] = node;
+}
+
 /*
 * TODO: adjust so only bodies that are within the box
 * should be passed in for bodies when recursing to the next depth
 */
-OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth, int64_t id) {
+OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth, int *id) {
     OctreeNode *node = (OctreeNode *)calloc(1, sizeof(OctreeNode));
+    insert_node_into_node_table(node); // assigns node->id as well
+
     node->bbox = box;
     node->max_dim = get_box_max_dim(box);
-    node->id = id;
     MPI_Comm_rank(MPI_COMM_WORLD, &(node->rank));
 
     // calc total mass and COM
@@ -315,8 +353,7 @@ OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth,
         node->childNodes = (OctreeNode **)malloc(8 * sizeof(OctreeNode *));
         for (int i = 0; i < 8; i++) {
             // add another digit to the parent id. tree root is the least-sig-digit
-            int64_t child_id = id + (i+1)*int_pow(10, depth);
-            node->childNodes[i] = build_local_octree(child_boxes[i], bodies, num_bodies, depth+1, child_id);
+            node->childNodes[i] = build_local_octree(child_boxes[i], bodies, num_bodies, depth+1, id);
         }
         node->childrenStatus = CHILDREN_NOT_RECEIVED; // for inter-rank sending octrees in compute_forces_dist
         free(child_boxes);
@@ -331,15 +368,27 @@ OctreeNode* build_local_octree(Box box, Body* bodies, int num_bodies, int depth,
     return node;
 }
 
-void free_octree(OctreeNode *node) {
+void free_octree_recursively(OctreeNode *node) {
     if (node == NULL) return;
-    if (node->childNodes == NULL) { // leaf node, free
-        free(node);
-    } else {
+    if (node->childNodes != NULL) { // not a leaf node, DFS free children first
         for (int i = 0; i < 8; i++) {
-            free_octree(node->childNodes[i]);
+            free_octree_recursively(node->childNodes[i]);
         }
     }
+    free(node);
+}
+
+void free_OctreeNode(OctreeNode *node) {
+    if (node == NULL) return;
+    free(node->childNodes);
+    free(node);
+}
+
+void clear_NodeTable(NodeTable *node_table) {
+    for (int i = 0; i < node_table->count; i++) {
+        free_OctreeNode(node_table->nodes[i]);
+    }
+    node_table->count = 0;
 }
 
 Box* divide_box_into_octants(Box parent) {
@@ -522,19 +571,19 @@ int compare_bodies_by_id(const void *a, const void *b) {
 /*
 * traverse the tree using least-sig-digit of tree as root
 */
-OctreeNode *get_node(OctreeNode *node, int64_t id) {
+OctreeNode *get_node(OctreeNode *node, int id) {
     if (id < 0) {
-        fprintf(stderr, "Node id (%" PRId64 ") < 0  was passed into get_node is required\n", id);
+        fprintf(stderr, "Node id %d < 0  was passed into get_node is required\n", id);
         MPI_Abort(MPI_COMM_WORLD, 1);
         return NULL;
     }
     
     int digit;
     int depth = 0;
-    int64_t remaining = id;
+    int remaining = id;
     while (remaining > 0 && depth < MAX_DEPTH) {
         if (node->childNodes == NULL) {
-            fprintf(stderr, "Node id (%" PRId64 ") was not found!\n", id);
+            fprintf(stderr, "Node id (%d) was not found!\n", id);
             MPI_Abort(MPI_COMM_WORLD, 1);
             return NULL;
         }
@@ -546,13 +595,12 @@ OctreeNode *get_node(OctreeNode *node, int64_t id) {
         node = node->childNodes[digit-1]; // digit-1 since id digits are 1-indexed so 0 can be the sentinel
     }
     if (node->id != id) {
-        fprintf(stderr, "Node id %" PRId64 " was requested but node id %" PRId64 " was incorrectly returned instead!\n", id, node->id);
+        fprintf(stderr, "Node id %d was requested but node id %d was incorrectly returned instead!\n", id, node->id);
         MPI_Abort(MPI_COMM_WORLD, 1);
         return NULL;
     }
     return node;
 }
-
 
 /*
 * Recursive helper function for adjusting the accel of one body due to one octree node
@@ -581,16 +629,15 @@ void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) 
         // request node from other rank if not yet cached
         if ((node->childrenStatus == CHILDREN_NOT_RECEIVED)
         && (node->rank != rank)) { // if node->rank == rank, we already have the whole tree
-            
-            node->childNodes = (OctreeNode **)malloc(8 * sizeof(OctreeNode *));
+            // node->childNodes is already malloc'ed at this point
             Box *boxes_to_verify_nodes = divide_box_into_octants(node->bbox);
             for (int i = 0; i < 8; i++) {
+                int child_id_to_req = (int)node->childNodes[i]; // id is an int that was casted into a OctreeNode*
                 node->childNodes[i] = (OctreeNode *)calloc(1, sizeof(OctreeNode));
                 if (node->childNodes[i] == NULL) {
                     fprintf(stderr, "{Rank %d} - Error allocating child node for caching node from rank %d.\n", rank, node->rank);
                     MPI_Abort(MPI_COMM_WORLD, 1);
                 }
-                int64_t child_id_to_req = node->id + (i+1)*int_pow(10, depth);
                 ServReq req = {
                     .command = NORMAL_SERVICE,
                     .id = child_id_to_req,
@@ -601,11 +648,19 @@ void compute_force_on_body_due_to_node(Body *body, OctreeNode *node, int depth) 
                     node->rank, TAG_NODE_REQUEST,
                     MPI_COMM_WORLD
                 );
+                ServResp resp;
                 MPI_Recv(
-                    node->childNodes[i], sizeof(OctreeNode), MPI_BYTE,
+                    &resp, sizeof(ServResp), MPI_BYTE,
                     node->rank, TAG_NODE_RESPONSE,
                     MPI_COMM_WORLD, MPI_STATUS_IGNORE
                 );
+                *(node->childNodes[i]) = resp.node;
+                if (resp.childIds[0] != -1) { // need to store this grandchild id's in this for future remote requesting
+                    for (int i = 0; i < 8; i++) {
+                        node->childNodes[i]->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
+                        node->childNodes[i]->childNodes[i] = (OctreeNode *)resp.childIds[i];
+                    }
+                }
             
                 compute_force_on_body_due_to_node(body, node->childNodes[i], depth+1);
             }
@@ -642,9 +697,9 @@ void compute_forces_dist(Body *bodies, int n, OctreeNode *local_octree, OctreeNo
         }
     }
     // free all cached non-local octrees
-    for (int r = 0; r < size; r++) {
-        free_octree(octrees[r]); // might need to switch octrees to double pointer for this to work
-    }
+    // for (int r = 0; r < size; r++) {
+    //     free_octree(octrees[r]); // might need to switch octrees to double pointer for this to work
+    // }
 }
 
 void *service_requests(void *arg) {
@@ -653,6 +708,7 @@ void *service_requests(void *arg) {
     
     MPI_Status status;
     ServReq req;
+    ServResp resp;
     OctreeNode *node;
 
     // service loop ends when thread receives shutdown msg from same rank
@@ -665,17 +721,36 @@ void *service_requests(void *arg) {
 
         if (req.command == STOP_SERVICE) break;
 
-        node = get_node(tree, req.id);
-        if (node == NULL) {
-            fprintf(stderr, "{Rank %d Service Thread} - Node id (%" PRId64 ") not found!\n", args->rank, req.id);
+        // node = get_node(tree, req.id);
+
+        if (req.id > local_node_table.count) {
+            fprintf(stderr, "{Rank %d Service Thread} - Requested Node id (%d) is higher than the local_node_table.count (%d)!\n", args->rank, req.id, local_node_table.count);
             fprintf(stderr, "{Rank %d Service Thread} - Local Tree Contents:\n", args->rank);
             printOctree(tree, 0);
             MPI_Abort(MPI_COMM_WORLD, 1);
             return NULL;
         }
+        node = local_node_table.nodes[req.id];
+        if (node == NULL) {
+            fprintf(stderr, "{Rank %d Service Thread} - Node id (%d) not found!\n", args->rank, req.id);
+            fprintf(stderr, "{Rank %d Service Thread} - Local Tree Contents:\n", args->rank);
+            printOctree(tree, 0);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return NULL;
+        }
+        resp.node = *node;
+
+        // get the requested node's childIds as well
+        if (node->childNodes == NULL) {
+            resp.childIds[0] = -1; // sentinel value
+        } else {
+            for (int i = 0; i < 8; i++) {
+                resp.childIds[i] = node->childNodes[i]->id;
+            }
+        }
 
         MPI_Send(
-            node, sizeof(OctreeNode), MPI_BYTE,
+            &resp, sizeof(ServResp), MPI_BYTE,
             status.MPI_SOURCE, TAG_NODE_RESPONSE,
             MPI_COMM_WORLD
         );
@@ -720,14 +795,14 @@ int main(int argc, char *argv[]) {
     if (argc >= 2) num_bodies = atoi(argv[1]);
     if (argc >= 3) num_steps = atoi(argv[2]);
 
-    clock_t start, end;
+    double start, end;
     if (rank == 0) {
         printf("N-Body Simulation\n");
         printf("-----------------\n");
         printf("Bodies: %d\n", num_bodies);
         printf("Steps : %d\n\n", num_steps);
 
-        start = clock();
+        start = MPI_Wtime();
     }
 
     Box global = init_global_space(INITIAL_WIDTH);
@@ -836,22 +911,50 @@ int main(int argc, char *argv[]) {
         if (err != MPI_SUCCESS) handle_mpi_errcode(err);
     }
     
+    // setup node table for local nodes for quick lookup for service thread
+    local_node_table.nodes = (OctreeNode **)calloc(STARTING_NODE_TABLE_CAP, sizeof(OctreeNode *));
+    local_node_table.cap = STARTING_NODE_TABLE_CAP;
+    local_node_table.count = 0;
+
     pthread_t serv_thread;
-    OctreeNode octrees[size];
+    ServResp parent_octree_resps[size];
     for (int step = 0; step < num_steps; step++) {
         // recalculate local octree
         OctreeNode *local_octree = build_local_octree(local_parent_box, local_bodies, num_local_bodies, 0, 0);
         // printOctree(local_octree, 0);
 
-        // every rank gets each others' local parent octree
+        // every rank gets each others' local parent octree and depth 1 childIds
+        ServResp initial_local_octree_info;
+        initial_local_octree_info.node = *local_octree;
+        if (local_octree->childNodes == NULL) {
+            initial_local_octree_info.childIds[0] = -1; // sentinel value
+        } else {
+            for (int i = 0; i < 8; i++) {
+                initial_local_octree_info.childIds[i] = local_octree->childNodes[i]->id;
+            }
+        }
         err = MPI_Allgather(
-            local_octree, sizeof(OctreeNode), MPI_BYTE,
-            octrees, sizeof(OctreeNode), MPI_BYTE, MPI_COMM_WORLD
+            &initial_local_octree_info, sizeof(ServResp), MPI_BYTE,
+            parent_octree_resps, sizeof(ServResp), MPI_BYTE, MPI_COMM_WORLD
         );
+
+        // insert the depth 1 children ids into all ranks' root octree nodes' childNodes
         OctreeNode *octree_ptrs[size];
         for (int r = 0; r < size; r++) {
             octree_ptrs[r] = (OctreeNode *)calloc(1, sizeof(OctreeNode)); // do so can use free_octree later
-            *(octree_ptrs[r]) = octrees[r]; // copy parent node values
+            *(octree_ptrs[r]) = parent_octree_resps[r].node; // copy parent node values
+            if ((parent_octree_resps[r].childIds[0] == -1)
+            || (parent_octree_resps[r].node.childNodes == NULL) 
+            || (parent_octree_resps[r].node.childrenStatus == NO_CHILDREN)) { // no children
+                octree_ptrs[r]->childNodes == NULL;
+                octree_ptrs[r]->childrenStatus == NO_CHILDREN;
+            } else {
+                octree_ptrs[r]->childNodes = (OctreeNode **)calloc(8, sizeof(OctreeNode *));
+                if (octree_ptrs[r]->childNodes == NULL) MPI_Abort(MPI_COMM_WORLD, 1);
+                for (int i = 0; i < 8; i++) {
+                    octree_ptrs[r]->childNodes[i] = (OctreeNode *)parent_octree_resps[r].childIds[i];
+                }
+            }
         }
 
         ServArgs serv_args = {.rank = rank, .size = size, .node = local_octree};
@@ -895,7 +998,7 @@ int main(int argc, char *argv[]) {
                 // find and store which rank to send the body to
                 for (int r = 0; r < size; r++) {
                     if (r == rank) continue; // no need to check the current rank
-                    if (body_is_inside_box(octrees[r].bbox, local_bodies + i)) {
+                    if (body_is_inside_box(octree_ptrs[r]->bbox, local_bodies + i)) {
                         ranks_to_transfer_bodies_to[i] = r;
                         num_bodies_to_send_per_rank[r]++;
                         num_bodies_to_send_total++;
@@ -1011,10 +1114,14 @@ int main(int argc, char *argv[]) {
             local_bodies = tmp;
         }
 
-        // free all octree copies since we have to remake them next timestep
-        // for (int r = 0; r < size; r++) {
-        //     free_octree(octree_ptrs[r]);
-        // }
+        // free all local octree nodes since we have to remake them next timestep
+        clear_NodeTable(&local_node_table);
+
+        //TODO: still need to free the cached octrees from other ranks
+        for (int r = 0; r < size; r++) {
+            if (r == rank) continue; // already freed local_octree via clear_NodeTable
+            free_octree_recursively(octree_ptrs[r]);
+        }
 
         err = MPI_Barrier(MPI_COMM_WORLD);
         handle_mpi_errcode(err);
@@ -1067,8 +1174,16 @@ int main(int argc, char *argv[]) {
         qsort(bodies, num_bodies, sizeof(Body), compare_bodies_by_id);
     }
 
+    free(global_octants);
+    free(local_bodies);
+    free(local_node_table.nodes);
+
+    printf("Rank %d success\n", rank);
+    err = MPI_Barrier(MPI_COMM_WORLD);
+    handle_mpi_errcode(err);
+
     if (rank == 0) {
-        end = clock();
+        end = MPI_Wtime();
 
         double elapsed =
             (double)(end - start) / CLOCKS_PER_SEC;
@@ -1084,10 +1199,6 @@ int main(int argc, char *argv[]) {
 
         free(bodies);
     }
-    free(global_octants);
-    free(local_bodies);
-
-    printf("rank %d success", rank);
     MPI_Finalize();
 
     return EXIT_SUCCESS;
