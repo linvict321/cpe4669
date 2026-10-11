@@ -106,11 +106,11 @@ type Request struct {
 // Requests struct represents pending message requests
 type Requests struct {
 	Pending map[int]Membership
-	//if want to support multiple messages sent to a client at once
-	//Pending map[int][]Membership for list of membership tables
+	//if want to support multiple messages sent to a client at once (from two neighbors)
+	//can we do Pending map[int][]Membership for list of membership tables? need to change client.go implementations then
 }
 
-// Returns a new instance of a Request (pointer).
+// Returns a new instance of a Requests (pointer).
 func NewRequests() *Requests {
 	return &Requests{
 		Pending: make(map[int]Membership),
@@ -138,7 +138,7 @@ func (req *Requests) Listen(ID int, rec_table *Membership) error {
 	return nil
 }
 
-func combineTables(recieving *Membership, sending *Membership) *Membership {
+func CombineTables(recieving *Membership, sending *Membership) *Membership {
 	//loops through sending side membership table
 	//check if node entry exists in recieving table (im guessing table2)
 	//if node entry has higher heartbeat count
@@ -146,17 +146,18 @@ func combineTables(recieving *Membership, sending *Membership) *Membership {
 	//doesn't exist
 	//add node to membership list
 
-	for id, node := range sending.Members {
+	for id, sending_node := range sending.Members {
 		rec_node, exists := recieving.Members[id]
 		var reply Node
 		if exists {
 			//var reply Node
-			if node.Hbcounter > rec_node.Hbcounter {
+			if sending_node.Hbcounter > rec_node.Hbcounter {
 				recieving.Update(rec_node, &reply)
 			}
+			//check if the current time - nodes.time is => to passed in CrashTime, b/c then it's heartbeat hasn't been updated within that time, so dead
 		} else {
 			//var reply Node
-			recieving.Add(node, &reply)
+			recieving.Add(sending_node, &reply)
 		}
 	}
 

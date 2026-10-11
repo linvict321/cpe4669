@@ -15,7 +15,7 @@ const (
 	MAX_NODES  = 8
 	X_TIME     = 1   //increments heartbeat counter every x seconds
 	Y_TIME     = 2   //sende membership table every y seconds
-	Z_TIME_MAX = 100 //z = time for node to fail, log(N) = log(8) = 3
+	Z_TIME_MAX = 100 //z = time for node to fail, log(N) = log(8) = 3, wait z amount of time after death before deleting node membership table
 	Z_TIME_MIN = 10
 )
 
@@ -61,10 +61,6 @@ func checkFailures(membership **shared.Membership, id int) {
 		}
 	}
 }
-
-// func calcTime() float64 { //don't think i'll use this
-// 	//TODO
-// }
 
 var wg = &sync.WaitGroup{}
 
@@ -148,11 +144,10 @@ func runAfterY(server *rpc.Client, neighbors [2]int, membership **shared.Members
 	}
 
 	//read and merge incoming gossip
-	newMembership := readMessages(server, id, **membership) //fix later
-	if newMembership != nil {
-		*membership = newMembership
-	}
+	newMembership := readMessages(server, id)                              //fix later
+	combinedMembership := shared.CombineTables(newMembership, *membership) //should we add crashtime parameter to check for dead nodes
 
+	printMembership(*combinedMembership)
 	checkFailures(membership, id)
 
 	//reschedule for next y secs
@@ -165,12 +160,14 @@ func runAfterZ(server *rpc.Client, id int) {
 
 	//mark self as dead
 	self_node.Alive = false
+	//stop incrememnting heartbeat
 
 	//block forever
 	select {}
 }
 
 func printMembership(m shared.Membership) {
+	fmt.Printf("<<<<<MEMBERSHIP TABLE>>>>>\n")
 	for _, val := range m.Members {
 		status := "is Alive"
 		if !val.Alive {
