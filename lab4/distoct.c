@@ -536,7 +536,7 @@ void handle_mpi_errcode(int errcode) {
         char err_string[MPI_MAX_ERROR_STRING];
         int resultlen;
         MPI_Error_string(errcode, err_string, &resultlen);
-        fprintf(stderr, err_string);
+        fprintf(stderr, "%s\n", err_string);
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 }

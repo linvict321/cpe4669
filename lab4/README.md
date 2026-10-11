@@ -1,23 +1,39 @@
-gcc -O2 nbody.c -o nbody -lm
+# Lab 4 - Distributed Barnes-Hut N-Body Simulation
 
-./nbody 1000 100
+To compile both the given sequential and distributed implementations, run:
 
-Compare the compiled sequential and distributed programs with the same inputs:
-Distributed implementation is run with {1, 2, 4, 6, 8} ranks
+```bash
+make
+```
 
-```powershell
+To run just the sequential nbody sim
+
+```bash
+./nbody <NUM_BODIES> <NUM_STEPS>
+```
+
+To run just the distributed sim
+
+```bash
+mpiexec -n <NUM_RANKS> ./distoct <NUM_BODIES> <NUM_STEPS>
+```
+
+Note that distoct only works with NUM_RANKS $\in$ {1, 2, 4, 6, 8}
+
+To compare the compiled sequential and distributed programs with the same inputs:
+Distributed implementation is run with {1, 2, 4, 6, 8} ranks, run:
+
+```bash
 python nbody_tester.py <NUM_BODIES> <NUM_STEPS>
 ```
 
-Alternatively for our lab, to compile and run use
+If getting errors when running with the higher number of ranks, run instead using:
 
-```powershell
-mpicc -g -Wall -pedantic -O0 -pthread -o distoct.exe distoct.c -lm
-mpiexec -np <NUM_RANKS> ./distoct.exe <NUM_BODIES> <NUM_STEPS>
+```bash
+python nbody_tester.py <NUM_BODIES> <NUM_STEPS> --oversubscribe
 ```
 
-To compile with tracing for profiling:
+In WSL, the tester prefers Linux binaries `nbody` and `distoct`; on Windows,
+it prefers `nbody.exe` and `distoct.exe`. If Open MPI reports insufficient slots, run:
 
-```powershell
-mpicc -o distoct distoct.c -lmpitrace
-```
+Oversubscribed runs can test correctness, but their timings do not measure scaling on dedicated cores.

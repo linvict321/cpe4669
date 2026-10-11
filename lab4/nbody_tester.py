@@ -8,6 +8,7 @@ Exit codes: 0 = match, 1 = mismatch, 2 = execution or output error.
 import argparse
 import csv
 import math
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -30,7 +31,11 @@ def parse_execution_time(output):
         r"Execution time:\s*(\S+)\s+seconds", output.split(marker, 1)[1]
     )
     if len(matches) != 1:
-        raise ValueError("expected exactly one final execution time")
+        raise ValueError(
+            f"expected exactly one final execution time, found {len(matches)}; "
+            "multiple timings can indicate independent singleton runs "
+            "from a mismatched MPI launcher and executable"
+        )
     seconds = float(matches[0])
     if not math.isfinite(seconds) or seconds < 0:
         raise ValueError("execution time must be finite and nonnegative")
@@ -82,11 +87,25 @@ def compare_bodies(reference, actual, tolerance):
 
 
 def default_executable(name):
-    for filename in (name + ".exe", name):
+    filenames = (name + ".exe", name) if os.name == "nt" else (name, name + ".exe")
+    for filename in filenames:
         path = SCRIPT_DIR / filename
         if path.is_file():
             return path
-    return SCRIPT_DIR / (name + ".exe")
+    return SCRIPT_DIR / filenames[0]
+
+
+def validate_executable(path):
+    """Reject Windows/Linux binary mixing even when WSL can launch .exe files."""
+    with path.open("rb") as executable:
+        signature = executable.read(4)
+    if os.name != "nt" and signature.startswith(b"MZ"):
+        raise ValueError(
+            f"{path} is a Windows executable. In WSL, build and select the "
+            "Linux executable with --nbody ./nbody or --distoct ./distoct"
+        )
+    if os.name == "nt" and signature == b"\x7fELF":
+        raise ValueError(f"{path} is a Linux executable; run it from WSL")
 
 
 def run_program(command, log_path, timeout):
@@ -110,6 +129,8 @@ def main():
     parser.add_argument("--nbody", type=Path, default=default_executable("nbody"))
     parser.add_argument("--distoct", type=Path, default=default_executable("distoct"))
     parser.add_argument("--mpiexec", default="mpiexec")
+    parser.add_argument("--oversubscribe", action="store_true",
+                        help="allow Open MPI to run more ranks than available CPU slots")
     parser.add_argument("--timeout", type=float, default=300,
                         help="maximum seconds per program (default: 300)")
     parser.add_argument("--output-dir", type=Path,
@@ -123,6 +144,11 @@ def main():
         parser.error("tolerance must be finite and nonnegative")
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("timeout must be finite and positive")
+    try:
+        validate_executable(args.nbody.resolve())
+        validate_executable(args.distoct.resolve())
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
 
     failed = False
     execution_error = False
@@ -155,7 +181,8 @@ def main():
             report_path.unlink(missing_ok=True)
             try:
                 output = run_program(
-                    [args.mpiexec, "-n", str(ranks),
+                    [args.mpiexec, *(["--oversubscribe"] if args.oversubscribe else []),
+                     "-n", str(ranks),
                      str(args.distoct.resolve()), *shared_args],
                     log_path, args.timeout,
                 )
