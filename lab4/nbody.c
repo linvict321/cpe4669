@@ -2,11 +2,13 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible
 #define DT 0.01
 #define MASS_ORDER 1.0e13
+#define INIT_WIDTH 100.0
 
 typedef struct {
     double x, y, z;      // Position
@@ -18,7 +20,7 @@ typedef struct {
 /* Function prototypes */
 void initialize_bodies(Body *bodies, int n);
 void compute_forces(Body *bodies, int n);
-void update_bodies(Body *bodies, int n, double dt);
+void update_bodies(Body *bodies, int n, double dt, int use_hard_boundaries);
 void print_bodies(Body *bodies, int n);
 
 
@@ -29,9 +31,9 @@ void initialize_bodies(Body *bodies, int n)
 {
     for (int i = 0; i < n; i++) {
 
-        bodies[i].x = ((double)rand() / RAND_MAX) * 100.0;
-        bodies[i].y = ((double)rand() / RAND_MAX) * 100.0;
-        bodies[i].z = ((double)rand() / RAND_MAX) * 100.0;
+        bodies[i].x = ((double)rand() / RAND_MAX) * INIT_WIDTH;
+        bodies[i].y = ((double)rand() / RAND_MAX) * INIT_WIDTH;
+        bodies[i].z = ((double)rand() / RAND_MAX) * INIT_WIDTH;
 
         bodies[i].vx = 0.0;
         bodies[i].vy = 0.0;
@@ -97,7 +99,7 @@ void compute_forces(Body *bodies, int n)
 /*
  * Update velocity and position using a simple Euler integration.
  */
-void update_bodies(Body *bodies, int n, double dt)
+void update_bodies(Body *bodies, int n, double dt, int use_hard_boundaries)
 {
     for (int i = 0; i < n; i++) {
 
@@ -110,6 +112,16 @@ void update_bodies(Body *bodies, int n, double dt)
         bodies[i].x += bodies[i].vx * dt;
         bodies[i].y += bodies[i].vy * dt;
         bodies[i].z += bodies[i].vz * dt;
+
+        if (use_hard_boundaries) {
+            if (bodies[i].x < 0) bodies[i].x = 0;
+            if (bodies[i].y < 0) bodies[i].y = 0;
+            if (bodies[i].z < 0) bodies[i].z = 0;
+
+            if (bodies[i].x > INIT_WIDTH) bodies[i].x = INIT_WIDTH;
+            if (bodies[i].y > INIT_WIDTH) bodies[i].y = INIT_WIDTH;
+            if (bodies[i].z > INIT_WIDTH) bodies[i].z = INIT_WIDTH;
+        }
     }
 }
 
@@ -143,6 +155,7 @@ int main(int argc, char *argv[])
 {
     int num_bodies = 1000;
     int num_steps = 100;
+    int use_hard_boundaries = 0; // false
 
     /*
      * Allow command-line arguments:
@@ -157,6 +170,9 @@ int main(int argc, char *argv[])
 
     if (argc >= 3)
         num_steps = atoi(argv[2]);
+
+    if (argc >= 4 && !strcmp(argv[3], "--use-hard-boundaries"))
+        use_hard_boundaries = 1;
 
     printf("N-Body Simulation\n");
     printf("-----------------\n");
@@ -182,7 +198,7 @@ int main(int argc, char *argv[])
         printf("Step %d/%d\r", step, num_steps);
         compute_forces(bodies, num_bodies);
 
-        update_bodies(bodies, num_bodies, DT);
+        update_bodies(bodies, num_bodies, DT, use_hard_boundaries);
 
         /*
          * Uncomment for debugging.

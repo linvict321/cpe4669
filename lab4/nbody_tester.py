@@ -127,6 +127,8 @@ def main():
     parser.add_argument("--ranks", type=int, nargs="+", default=[1, 2, 4, 6, 8])
     parser.add_argument("--tolerance", type=float, default=0.5)
     parser.add_argument("--nbody", type=Path, default=default_executable("nbody"))
+    parser.add_argument("--nbody_use_hard_boundaries", action="store_true",
+                        help="append --use-hard-boundaries to the nbody command")
     parser.add_argument("--distoct", type=Path, default=default_executable("distoct"))
     parser.add_argument("--mpiexec", default="mpiexec")
     parser.add_argument("--oversubscribe", action="store_true",
@@ -164,9 +166,12 @@ def main():
     try:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         shared_args = [str(args.bodies), str(args.steps)]
+        nbody_command = [str(args.nbody.resolve()), *shared_args]
+        if args.nbody_use_hard_boundaries:
+            nbody_command.append("--use-hard-boundaries")
         row = new_result("nbody", 1)
         output = run_program(
-            [str(args.nbody.resolve()), *shared_args],
+            nbody_command,
             args.output_dir / "nbody.log", args.timeout,
         )
         row["execution_seconds"] = parse_execution_time(output)
