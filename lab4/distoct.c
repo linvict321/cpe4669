@@ -813,7 +813,7 @@ int main(int argc, char *argv[]) {
     int starts[size]; // inclusive
     int ends[size]; // exclusive
     get_idxs_for_each_rank(starts, ends, 8, size); // 8 octants
-    printf("Rank %d has octants [%d, %d)\n", rank, starts[rank], ends[rank]);
+    // printf("Rank %d has octants [%d, %d)\n", rank, starts[rank], ends[rank]);
 
     // get the parent 3D space for this rank's local octree
     Box rank_parent_boxes[size];
@@ -822,8 +822,8 @@ int main(int argc, char *argv[]) {
     }
     Box local_parent_box = rank_parent_boxes[rank];
 
-    printf("\nRank %d Local Parent: \n", rank);
-    print_boxes(&local_parent_box, 1);
+    // printf("\nRank %d Local Parent: \n", rank);
+    // print_boxes(&local_parent_box, 1);
     
     Body *bodies;
     int ranks_num_local_bodies[size];
@@ -839,7 +839,7 @@ int main(int argc, char *argv[]) {
         
         srand(0);
         initialize_bodies(bodies, num_bodies);
-        print_bodies(bodies, num_bodies);
+        // print_bodies(bodies, num_bodies);
 
         // first make array of which rank each body will be sent to
         // and how many bodies each rank will get
@@ -1178,7 +1178,7 @@ int main(int argc, char *argv[]) {
     free(local_bodies);
     free(local_node_table.nodes);
 
-    printf("Rank %d success\n", rank);
+    // printf("Rank %d success\n", rank);
     err = MPI_Barrier(MPI_COMM_WORLD);
     handle_mpi_errcode(err);
 
@@ -1189,7 +1189,7 @@ int main(int argc, char *argv[]) {
             (double)(end - start) / CLOCKS_PER_SEC;
 
         printf("Simulation completed.\n");
-        printf("Execution time: %.6f seconds\n", elapsed);
+        printf("Execution time: %.6f seconds\n\n", elapsed);
 
         /* check against sequential by writing the print_bodies
          * output into a file, then diff'ing that file against

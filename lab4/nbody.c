@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
     srand(0);
 
     initialize_bodies(bodies, num_bodies);
-    print_bodies(bodies, num_bodies);
+    // print_bodies(bodies, num_bodies);
 
     clock_t start = clock();
 

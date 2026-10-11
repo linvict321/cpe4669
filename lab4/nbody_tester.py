@@ -22,6 +22,7 @@ BODY_PATTERN = re.compile(
 
 
 def parse_execution_time(output):
+    """Validate the reported seconds and preserve their exact decimal text."""
     marker = "Simulation completed."
     if marker not in output:
         raise ValueError("missing 'Simulation completed.' marker")
@@ -33,7 +34,7 @@ def parse_execution_time(output):
     seconds = float(matches[0])
     if not math.isfinite(seconds) or seconds < 0:
         raise ValueError("execution time must be finite and nonnegative")
-    return seconds
+    return matches[0]
 
 
 def parse_final_bodies(output, expected_count):
@@ -63,6 +64,11 @@ def parse_final_bodies(output, expected_count):
     return bodies
 
 
+def warn_negative_positions(bodies, label):
+    if any(value < 0 for values in bodies.values() for value in values[:3]):
+        print(f"WARNING ({label}): final output contains negative position coordinates.")
+
+
 def compare_bodies(reference, actual, tolerance):
     mismatches = []
     for body_id in sorted(reference):
@@ -84,7 +90,7 @@ def default_executable(name):
 
 
 def run_program(command, log_path, timeout):
-    print("Running:", subprocess.list2cmdline(command), flush=True)
+    print("\nRunning:", subprocess.list2cmdline(command), flush=True)
     with log_path.open("w", encoding="utf-8") as log:
         result = subprocess.run(
             command, stdout=log, stderr=subprocess.STDOUT,
@@ -139,8 +145,9 @@ def main():
         )
         row["execution_seconds"] = parse_execution_time(output)
         reference = parse_final_bodies(output, args.bodies)
+        warn_negative_positions(reference, "nbody")
         row["status"] = "REFERENCE"
-        print(f"nbody execution time: {row['execution_seconds']:.8g} seconds")
+        print(f"nbody execution time: {row['execution_seconds']} seconds")
         for ranks in dict.fromkeys(args.ranks):
             row = new_result("distoct", ranks)
             log_path = args.output_dir / f"distoct_{ranks}_ranks.log"
@@ -154,8 +161,9 @@ def main():
                 )
                 row["execution_seconds"] = parse_execution_time(output)
                 print(f"distoct ({ranks} ranks) execution time: "
-                      f"{row['execution_seconds']:.8g} seconds")
+                      f"{row['execution_seconds']} seconds")
                 actual = parse_final_bodies(output, args.bodies)
+                warn_negative_positions(actual, f"distoct, {ranks} ranks")
                 mismatches = compare_bodies(reference, actual, args.tolerance)
                 max_difference = max(
                     abs(a - b) for body_id in reference
