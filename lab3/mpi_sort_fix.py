@@ -36,16 +36,19 @@ def distributed_k_way_merge_sort(arr, comm):
             partner = rank + step
             if partner < size:
                 #recv sorted result from partner process
-                recieved = comm.recv(source = partner, tag = step,)
+                recv_count = comm.recv(source=partner, tag=step)
+                received = np.empty(recv_count, dtype=np.int64)
+                comm.Recv([received, MPI.INT64_T], source = partner, tag = step,)
 
                 #recv wins round by merging both lists
-                local_arr = merge(local_arr, recieved, )
+                local_arr = merge(local_arr, received)
         elif rank % group_size == step:
             partner = rank - step
 
             #send proc result to lower ranked processes
-            comm.send(
-                local_arr,
+            comm.send(len(local_arr), dest=partner, tag=step)
+            comm.Send(
+                [local_arr, MPI.INT64_T],
                 dest=partner,
                 tag=step,
             )
@@ -55,20 +58,26 @@ def distributed_k_way_merge_sort(arr, comm):
     return local_arr if rank == 0 else None
     
 def merge(left, right):
-    result = []
+    result_len = len(left) + len(right)
+    result = np.empty(result_len, dtype=np.int64)
     i = 0
     j = 0
+    result_idx = 0
 
     while i < len(left) and j < len(right):
         if left[i] < right[j]:
-            result.append(left[i])
+            result[result_idx] = left[i]
             i += 1
         else:
-            result.append(right[j])
+            result[result_idx] = right[j]
             j += 1
 
-    result.extend(left[i:])
-    result.extend(right[j:])
+        result_idx += 1
+
+    if i < len(left):
+        result[result_idx:] = left[i:]
+    elif j < len(right):
+        result[result_idx:] = right[j:]
 
     return result
 
