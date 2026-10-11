@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible
 #define DT 0.01
+#define MASS_ORDER 1.0e13
+#define INIT_WIDTH 100.0
 
 typedef struct {
     double x, y, z;      // Position
@@ -17,7 +20,7 @@ typedef struct {
 /* Function prototypes */
 void initialize_bodies(Body *bodies, int n);
 void compute_forces(Body *bodies, int n);
-void update_bodies(Body *bodies, int n, double dt);
+void update_bodies(Body *bodies, int n, double dt, int use_hard_boundaries);
 void print_bodies(Body *bodies, int n);
 
 
@@ -28,9 +31,9 @@ void initialize_bodies(Body *bodies, int n)
 {
     for (int i = 0; i < n; i++) {
 
-        bodies[i].x = ((double)rand() / RAND_MAX) * 100.0;
-        bodies[i].y = ((double)rand() / RAND_MAX) * 100.0;
-        bodies[i].z = ((double)rand() / RAND_MAX) * 100.0;
+        bodies[i].x = ((double)rand() / RAND_MAX) * INIT_WIDTH;
+        bodies[i].y = ((double)rand() / RAND_MAX) * INIT_WIDTH;
+        bodies[i].z = ((double)rand() / RAND_MAX) * INIT_WIDTH;
 
         bodies[i].vx = 0.0;
         bodies[i].vy = 0.0;
@@ -40,7 +43,7 @@ void initialize_bodies(Body *bodies, int n)
         bodies[i].ay = 0.0;
         bodies[i].az = 0.0;
 
-        bodies[i].mass = 1.0e10 + ((double)rand() / RAND_MAX) * 1.0e10;
+        bodies[i].mass = MASS_ORDER + ((double)rand() / RAND_MAX) * MASS_ORDER;
     }
 }
 
@@ -96,7 +99,7 @@ void compute_forces(Body *bodies, int n)
 /*
  * Update velocity and position using a simple Euler integration.
  */
-void update_bodies(Body *bodies, int n, double dt)
+void update_bodies(Body *bodies, int n, double dt, int use_hard_boundaries)
 {
     for (int i = 0; i < n; i++) {
 
@@ -109,6 +112,16 @@ void update_bodies(Body *bodies, int n, double dt)
         bodies[i].x += bodies[i].vx * dt;
         bodies[i].y += bodies[i].vy * dt;
         bodies[i].z += bodies[i].vz * dt;
+
+        if (use_hard_boundaries) {
+            if (bodies[i].x < 0) bodies[i].x = 0;
+            if (bodies[i].y < 0) bodies[i].y = 0;
+            if (bodies[i].z < 0) bodies[i].z = 0;
+
+            if (bodies[i].x > INIT_WIDTH) bodies[i].x = INIT_WIDTH;
+            if (bodies[i].y > INIT_WIDTH) bodies[i].y = INIT_WIDTH;
+            if (bodies[i].z > INIT_WIDTH) bodies[i].z = INIT_WIDTH;
+        }
     }
 }
 
@@ -142,6 +155,7 @@ int main(int argc, char *argv[])
 {
     int num_bodies = 1000;
     int num_steps = 100;
+    int use_hard_boundaries = 0; // false
 
     /*
      * Allow command-line arguments:
@@ -156,6 +170,9 @@ int main(int argc, char *argv[])
 
     if (argc >= 3)
         num_steps = atoi(argv[2]);
+
+    if (argc >= 4 && !strcmp(argv[3], "--use-hard-boundaries"))
+        use_hard_boundaries = 1;
 
     printf("N-Body Simulation\n");
     printf("-----------------\n");
@@ -173,7 +190,7 @@ int main(int argc, char *argv[])
     srand(0);
 
     initialize_bodies(bodies, num_bodies);
-    print_bodies(bodies, num_bodies);
+    // print_bodies(bodies, num_bodies);
 
     clock_t start = clock();
 
@@ -181,33 +198,8 @@ int main(int argc, char *argv[])
         printf("Step %d/%d\r", step, num_steps);
         compute_forces(bodies, num_bodies);
 
-        update_bodies(bodies, num_bodies, DT);
+        update_bodies(bodies, num_bodies, DT, use_hard_boundaries);
 
-        // from the below testing, it was concluded that
-        // bodies will easily end up outside of the original [0, 100] dims
-        // so Octree creation will have to account for that
-        // for (int i = 0; i < num_bodies; i++) {
-        //     Body body = bodies[i];
-        //     if (body.x < 0 || body.x > 100 || 
-        //         body.y < 0 || body.y > 100 ||
-        //         body.z < 0 || body.z > 100
-        //     ) {
-        //         printf(
-        //             "Step %d - "
-        //             "Body %d: "
-        //             "pos=(%.4f, %.4f, %.4f) "
-        //             "vel=(%.4f, %.4f, %.4f)\n",
-        //             step,
-        //             i,
-        //             bodies[i].x,
-        //             bodies[i].y,
-        //             bodies[i].z,
-        //             bodies[i].vx,
-        //             bodies[i].vy,
-        //             bodies[i].vz
-        //         );
-        //     }
-        // }
         /*
          * Uncomment for debugging.
          *
