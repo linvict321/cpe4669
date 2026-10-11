@@ -1,2 +1,5 @@
 .venv/
 .vscode/
+lab4/hello*
+lab4/*.exe
+lab4/nbody
