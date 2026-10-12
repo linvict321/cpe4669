@@ -13,9 +13,9 @@ import (
 
 const (
 	MAX_NODES  = 8
-	X_TIME     = 1   //increments heartbeat counter every x seconds
-	Y_TIME     = 2   //sende membership table every y seconds
-	Z_TIME_MAX = 100 //z = time for node to fail, log(N) = log(8) = 3, wait z amount of time after death before deleting node membership table
+	X_TIME     = 1  //increments heartbeat counter every x seconds
+	Y_TIME     = 2  //sende membership table every y seconds
+	Z_TIME_MAX = 60 //z = time for node to fail, log(N) = log(8) = 3, wait z amount of time after death before deleting node membership table
 	Z_TIME_MIN = 10
 )
 
@@ -28,7 +28,7 @@ func sendMessage(server *rpc.Client, id int, membership shared.Membership) {
 	if err := server.Call("Requests.Add", req, &self_req_response); err != nil {
 		fmt.Println("Error: Requests.Add()", err)
 	} else {
-		fmt.Printf("Success: Message added to request list for Node %d\n", id)
+		//fmt.Printf("Success: Message added to request list for Node %d\n", id)//commented out for cleaner debugging screen
 	}
 }
 
@@ -36,11 +36,12 @@ func sendMessage(server *rpc.Client, id int, membership shared.Membership) {
 func readMessages(server *rpc.Client, id int) *shared.Membership {
 	var self_recieved_table *shared.Membership
 	//use own id to check requests table if you have any message for your node id
+	//should we listen twice? in case have two nodes sending at once
 	if err := server.Call("Requests.Listen", id, &self_recieved_table); err != nil {
 		fmt.Println("Error: Requests.Listen()", err)
 		return nil //have to check this when calling readMessages()
 	} else {
-		fmt.Printf("Success: Node %d recieved pending gossip\n", id)
+		//fmt.Printf("Success: Node %d recieved pending gossip\n", id) //commented out for cleaner debugging screen
 		return self_recieved_table
 	}
 }
@@ -54,19 +55,20 @@ func checkFailures(membership **shared.Membership, id int) {
 		if nodeID == id {
 			continue
 		}
-		if node.Alive && (currTime-node.Time) > failTime {
+		if node.Alive && (currTime-node.Time) > failTime { //used to be >float64(Z_TIME)
 			node.Alive = false
 			(*membership).Members[nodeID] = node
-			fmt.Printf("Node %d detected failure of Node %d\n", id, nodeID)
+			//fmt.Printf("Node %d detected failure of Node %d\n", id, nodeID) //commented out for cleaner debugging screen
 		}
 	}
 }
 
 var wg = &sync.WaitGroup{}
+var Z_TIME = self_node.CrashTime()
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	Z_TIME := rand.Intn(Z_TIME_MAX-Z_TIME_MIN) + Z_TIME_MIN
+	//Z_TIME := rand.Intn(Z_TIME_MAX-Z_TIME_MIN) + Z_TIME_MIN
 
 	// Connect to RPC server
 	server, _ := rpc.DialHTTP("tcp", "localhost:9005")
@@ -85,7 +87,6 @@ func main() {
 
 	fmt.Println("Node", id, "will fail after", Z_TIME, "seconds")
 
-	//currTime := calcTime()
 	currTime := float64(time.Now().UnixNano()) / float64(time.Second) //convert from ns to sec, and typecast to float
 
 	// Construct self
@@ -128,7 +129,7 @@ func runAfterX(server *rpc.Client, node *shared.Node, membership **shared.Member
 
 	//update in local membership before gossiping
 	(*membership).Members[id] = *node
-	fmt.Printf("Node %d: heartbeat incremented to %d\n", id, node.Hbcounter)
+	//fmt.Printf("Node %d: heartbeat incremented to %d\n", id, node.Hbcounter) //commented out for cleaner debugging screen
 
 	//reschedule for next x seconds
 	time.AfterFunc(time.Second*X_TIME, func() { runAfterX(server, node, membership, id) })
@@ -144,26 +145,21 @@ func runAfterY(server *rpc.Client, neighbors [2]int, membership **shared.Members
 	}
 
 	//read and merge incoming gossip
-	newMembership := readMessages(server, id)                              //fix later
-	combinedMembership := shared.CombineTables(newMembership, *membership) //should we add crashtime parameter to check for dead nodes
-
-	printMembership(*combinedMembership)
+	//should loop through messages to read, maybe learn from server how much
+	newMembership := readMessages(server, id)        //fix later
+	shared.CombineTables(*membership, newMembership) //should we add crashtime parameter to check for dead nodes
+	printMembership(**membership)
 	checkFailures(membership, id)
 
 	//reschedule for next y secs
 	time.AfterFunc(time.Second*Y_TIME, func() { runAfterY(server, neighbors, membership, id) })
-
 }
 
 func runAfterZ(server *rpc.Client, id int) {
 	//simulate one node failing every z secs
-
-	//mark self as dead
 	self_node.Alive = false
-	//stop incrememnting heartbeat
-
-	//block forever
-	select {}
+	fmt.Printf("Node %d died.\n", id)
+	os.Exit(0)
 }
 
 func printMembership(m shared.Membership) {

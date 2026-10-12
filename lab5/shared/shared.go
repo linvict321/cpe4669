@@ -3,6 +3,7 @@ package shared
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -106,6 +107,7 @@ type Request struct {
 // Requests struct represents pending message requests
 type Requests struct {
 	Pending map[int]Membership
+	mu      sync.Mutex
 	//if want to support multiple messages sent to a client at once (from two neighbors)
 	//can we do Pending map[int][]Membership for list of membership tables? need to change client.go implementations then
 }
@@ -119,8 +121,17 @@ func NewRequests() *Requests {
 
 // Adds a new message request to the pending list
 func (req *Requests) Add(request Request, added *bool) error {
-	req.Pending[request.ID] = request.Table
+	req.mu.Lock() //mutex lock for race condition w/multiple nodes accessing at same time
+
+	old_table, exists := req.Pending[request.ID]
+
+	if !exists { //first thing to get to requests mailbox
+		req.Pending[request.ID] = request.Table
+	} else { //if something already there combine tables for one bigger membership table
+		req.Pending[request.ID] = *CombineTables(&old_table, &request.Table)
+	}
 	*added = true
+	req.mu.Unlock()
 	return nil
 }
 
@@ -133,8 +144,6 @@ func (req *Requests) Listen(ID int, rec_table *Membership) error {
 	}
 
 	*rec_table = table
-	//once recieved gossip, can remove from request list, use built in hashmap delete func
-	delete(req.Pending, ID)
 	return nil
 }
 
@@ -152,9 +161,8 @@ func CombineTables(recieving *Membership, sending *Membership) *Membership {
 		if exists {
 			//var reply Node
 			if sending_node.Hbcounter > rec_node.Hbcounter {
-				recieving.Update(rec_node, &reply)
+				recieving.Update(sending_node, &reply)
 			}
-			//check if the current time - nodes.time is => to passed in CrashTime, b/c then it's heartbeat hasn't been updated within that time, so dead
 		} else {
 			//var reply Node
 			recieving.Add(sending_node, &reply)
