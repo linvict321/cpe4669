@@ -49,13 +49,13 @@ func readMessages(server *rpc.Client, id int) *shared.Membership {
 func checkFailures(membership **shared.Membership, id int) {
 	//a node is failed if heartbeat hasn't been updated within timeout
 	currTime := float64(time.Now().UnixNano()) / float64(time.Second)
-	failTime := float64(3 * X_TIME)
+	failTime := float64(3 * Y_TIME) //changed from X_TIME to Y_TIME
 
 	for nodeID, node := range (*membership).Members {
 		if nodeID == id {
 			continue
 		}
-		if node.Alive && (currTime-node.Time) > failTime { //used to be >float64(Z_TIME)
+		if node.Alive && (currTime-node.Time) > failTime {
 			node.Alive = false
 			(*membership).Members[nodeID] = node
 			//fmt.Printf("Node %d detected failure of Node %d\n", id, nodeID) //commented out for cleaner debugging screen

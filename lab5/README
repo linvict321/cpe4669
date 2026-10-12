@@ -1,20 +1,26 @@
 # Lab 5 - Gossip Membership & Heartbeat Protocol
 
-## Usage
-
-# RPC Setup
+## Usage with RPC Setup
+To start open one terminal for the server and cd into the lab5/server directory
 
 ```sh
-cd lab5
+cd lab5/server
 ```
-open up 2 terminals (or split terminal)
+Next open up 8 terminals for the clients, you can split them with the Split Terminal button for vertical split and holding 'Alt' for horizontal splits. Cd into the lab5.client directory
 
-for client terminal:
+```sh
+cd lab5/client
+```
+
+First start up the server by running
+
+```sh
+go run server.go
+```
+Then start each client independently by running
+
 ```sh
 go run client.go
 ```
 
-for server terminal:
-```sh
-go run server.go
-```
+in each terminal window. Try to do this somewhat quickly so that they all start around the same time.
