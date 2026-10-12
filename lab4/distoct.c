@@ -11,9 +11,9 @@
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible and causing numerical "slingshotting" for bodies close together
 #define DT 0.01
-#define MASS_ORDER 1.0e13
+#define MASS_ORDER 1.0e15
 #define ACCURACY 0.01  // google said 0.5 was the "sweet spot", though [0.5, 1] is a normal range
-#define INITIAL_WIDTH 100.0
+#define INITIAL_WIDTH 10000.0
 #define MAX_DEPTH 1024 // arbitrary rn
 #define STARTING_NODE_TABLE_CAP 256 // somewhat arbitrary
 
@@ -817,9 +817,9 @@ int main(int argc, char *argv[]) {
         printf("-----------------\n");
         printf("Bodies: %d\n", num_bodies);
         printf("Steps : %d\n\n", num_steps);
-
-        start = MPI_Wtime();
+        
     }
+    start = MPI_Wtime();
 
     Box global = init_global_space(INITIAL_WIDTH);
     Box *global_octants = divide_box_into_octants(global);
@@ -841,7 +841,7 @@ int main(int argc, char *argv[]) {
     // printf("\nRank %d Local Parent: \n", rank);
     // print_boxes(&local_parent_box, 1);
     
-    Body *bodies;
+    Body *bodies = NULL;
     int ranks_num_local_bodies[size];
     int num_local_bodies;
     Body *local_bodies;
@@ -1194,8 +1194,8 @@ int main(int argc, char *argv[]) {
     err = MPI_Barrier(MPI_COMM_WORLD);
     handle_mpi_errcode(err);
 
+    end = MPI_Wtime();
     if (rank == 0) {
-        end = MPI_Wtime();
 
         double elapsed = end - start;
 
