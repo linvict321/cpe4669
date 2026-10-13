@@ -23,7 +23,7 @@ type Node struct {
 func (n Node) CrashTime() int {
 	rand.Seed(time.Now().UnixNano())
 	max := 60
-	min := 10
+	min := 15
 	return rand.Intn(max-min) + min
 }
 
@@ -58,10 +58,8 @@ func NewMembership() *Membership {
 	}
 }
 
-// apparently this function is binded to Membership struct, as a method; m is like this or self in other languages
 // Adds a node to the membership list.
 func (m *Membership) Add(payload Node, reply *Node) error {
-	//do i need to set *reply = to the node this returns if it already exists in table?
 	_, exists := m.Members[payload.ID]
 	//check if we already have node with that id in the membership table
 	if exists {
@@ -77,7 +75,7 @@ func (m *Membership) Add(payload Node, reply *Node) error {
 // Updates a node in the membership list.
 func (m *Membership) Update(payload Node, reply *Node) error {
 	//payload is copy of node so can change time and put into membership table entry
-	payload.Time = float64(time.Now().UnixNano()) / float64(time.Second) //convert from ns to sec, and typecast to float
+	payload.Time = float64(time.Now().UnixNano()) / float64(time.Second)
 	m.Members[payload.ID] = payload
 
 	return nil
@@ -95,10 +93,7 @@ func (m *Membership) Get(id int, reply *Node) error {
 	return nil
 }
 
-/*need to add sync.Mutex so that clients calling RPC don't accidentally access these functions at the same time*/
-
 // Request struct represents a new message request to a client
-// what if we have multiple messages sent a client at once? wouldn't it get overwritten
 type Request struct {
 	ID    int        //id of destination node (client)
 	Table Membership //gossip table sending to client
@@ -108,8 +103,6 @@ type Request struct {
 type Requests struct {
 	Pending map[int]Membership
 	mu      sync.Mutex
-	//if want to support multiple messages sent to a client at once (from two neighbors)
-	//can we do Pending map[int][]Membership for list of membership tables? need to change client.go implementations then
 }
 
 // Returns a new instance of a Requests (pointer).
@@ -148,23 +141,14 @@ func (req *Requests) Listen(ID int, rec_table *Membership) error {
 }
 
 func CombineTables(recieving *Membership, sending *Membership) *Membership {
-	//loops through sending side membership table
-	//check if node entry exists in recieving table (im guessing table2)
-	//if node entry has higher heartbeat count
-	//calls update on recieving table to update the node in table to recieving table node
-	//doesn't exist
-	//add node to membership list
-
 	for id, sending_node := range sending.Members {
 		rec_node, exists := recieving.Members[id]
 		var reply Node
 		if exists {
-			//var reply Node
-			if sending_node.Hbcounter > rec_node.Hbcounter {
+			if sending_node.Hbcounter > rec_node.Hbcounter { //if heartbeat higher, update
 				recieving.Update(sending_node, &reply)
 			}
-		} else {
-			//var reply Node
+		} else { //if doesn't exist, add to membership table
 			recieving.Add(sending_node, &reply)
 		}
 	}

@@ -11,7 +11,6 @@ func main() {
 	// create a Membership list
 	nodes := shared.NewMembership()
 	requests := shared.NewRequests()
-	//should we change requests to be a queue??? FIFO
 
 	// register nodes with `rpc.DefaultServer`
 	rpc.Register(nodes)
@@ -27,5 +26,4 @@ func main() {
 
 	// listen and serve default HTTP server
 	http.ListenAndServe("localhost:9005", nil)
-	//we need to implement a queue in case two neighbors send to the same node at same time, want to only send once at a time
 }
