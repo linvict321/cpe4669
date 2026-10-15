@@ -7,8 +7,8 @@
 #define G 6.67430e-11
 #define SOFTENING 1e-1  // was originally 1e-9 but this was negligible
 #define DT 0.01
-#define MASS_ORDER 1.0e13
-#define INIT_WIDTH 100.0
+#define MASS_ORDER 1.0e15
+#define INIT_WIDTH 10000.0
 
 typedef struct {
     double x, y, z;      // Position

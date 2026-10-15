@@ -35,6 +35,12 @@ python nbody_tester.py <NUM_BODIES> <NUM_STEPS> --oversubscribe
 
 Can also add the `--nbody_use_hard_boundaries` flag for the implementations to still match when a body was trying to go out of the original space.
 
+To compare two saved program outputs without running either simulation:
+
+```bash
+python compare_nbody_outputs.py nbody_output.txt distoct_output.txt
+```
+
 In WSL, the tester prefers Linux binaries `nbody` and `distoct`; on Windows,
 it prefers `nbody.exe` and `distoct.exe`. If Open MPI reports insufficient slots, run:
 
