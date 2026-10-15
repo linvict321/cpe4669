@@ -1,0 +1,19 @@
+# Lab 6 - Raft Election Protocol
+
+## Usage with RPC Setup
+
+cd into the lab6 directory
+
+```sh
+cd lab6
+```
+
+Next open up 8 terminals for the clients, you can split them with the Split Terminal button for vertical split and holding 'Alt' for horizontal splits.
+
+In each terminal, start each node via
+
+```sh
+go run raft.go
+```
+
+Try to do this somewhat quickly so that they all start around the same time.
