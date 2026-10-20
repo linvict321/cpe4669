@@ -52,22 +52,22 @@ type Node struct {
 }
 
 type HbArgs struct {
-	term     int // leader's currentTerm
-	leaderId int
+	Term     int // leader's currentTerm
+	LeaderId int
 }
 
 type ReqVoteArgs struct {
-	term        int // candidate's term
-	candidateId int // candidate requesting vote
+	Term        int // candidate's term
+	CandidateId int // candidate requesting vote
 }
 
 type ReqVoteRespArgs struct {
-	voteGranted bool // true if node voted for candidate, otherwise false
-	term        int // candidate and node's term
-	voterId     int // id of voting (responding) node
+	VoteGranted bool // true if node voted for candidate, otherwise false
+	Term        int // candidate and node's term
+	VoterId     int // id of voting (responding) node
 }
 
-const BASE_PORT int = 9000
+const BASE_PORT int = 8080
 const MAX_RETRIES int = 10
 const NOT_YET_VOTED_THIS_TERM int = -1
 const HEARTBEAT_PERIOD int = 50 // how often leader sends a heartbeat, in ms
@@ -100,7 +100,7 @@ func ParseArgs() CliArgs {
 
 func (node *Node) SetNewElectionTimeout() {
 	// TODO: Return arg of IntN back to 151 after debugging!
-	node.electionTimeout = rand.IntN(10001) + 150 // random int between [150, 300]
+	node.electionTimeout = rand.IntN(10000) + 150 // random int between [150, 300]
 	if node.electionTimer != nil {
 		node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
 	}
@@ -121,7 +121,7 @@ func initNode(args CliArgs) *Node { // Go garbage collector means don't need to 
 	node.totalNodes = args.N
 	node.majority = int(args.N / 2) + 1
 	node.peers = make(map[int]*rpc.Client, args.N-1)
-	node.hbCh = make(chan HbArgs)
+	//node.hbCh = make(chan HbArgs)
 	node.electionTimer = time.NewTimer(time.Duration(node.electionTimeout) * time.Millisecond)
 	node.hbTimer = time.NewTimer(time.Duration(HEARTBEAT_PERIOD) * time.Millisecond)
 
@@ -132,12 +132,20 @@ func initNode(args CliArgs) *Node { // Go garbage collector means don't need to 
 
 // TODO: fix race condition of node state when node is Candidate
 func (node *Node) AppendEntries(hbArgs *HbArgs, reply *bool) error {
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
 	// only notify to reset electionTimer and stuff for an up-to-date leader
-	if hbArgs.term >= node.currentTerm {
-		node.hbCh <- *hbArgs
-		node.leaderId = hbArgs.leaderId
-		node.currentTerm = hbArgs.term
-		node.voteCount = 0 // maybe should do in the main loop instead?
+	if hbArgs.Term >= node.currentTerm {
+		if hbArgs.Term > node.currentTerm{
+			node.votedFor = NOT_YET_VOTED_THIS_TERM
+		}
+		node.currentTerm = hbArgs.Term
+		node.state = Follower //candidate goes back to follower if it loses
+		node.voteCount = 0
+		node.leaderId = hbArgs.LeaderId
+		node.SetNewElectionTimeout()
 		*reply = true
 	} else {
 		*reply = false
@@ -151,26 +159,41 @@ func (node *Node) RequestVote(voteReq *ReqVoteArgs, reply *ReqVoteRespArgs) erro
 	node.mu.Lock()
 	defer node.mu.Unlock()
 
-	if voteReq.term >= node.currentTerm && node.votedFor == NOT_YET_VOTED_THIS_TERM {
-		reply.voteGranted = true
-		node.votedFor = voteReq.candidateId
-		msg := fmt.Sprintf("Term %d: voted for Node %d", node.currentTerm, voteReq.candidateId)
+	//adopt the higher term
+	if voteReq.Term > node.currentTerm {
+		node.currentTerm = voteReq.Term
+		node.votedFor = NOT_YET_VOTED_THIS_TERM
+		node.state = Follower
+	}
+
+	if voteReq.Term == node.currentTerm && (node.votedFor == NOT_YET_VOTED_THIS_TERM || node.votedFor == voteReq.CandidateId) {
+		reply.VoteGranted = true
+		node.SetNewElectionTimeout() //so no competing election starts
+		node.votedFor = voteReq.CandidateId
+		msg := fmt.Sprintf("Term %d: voted for Node %d", node.currentTerm, voteReq.CandidateId)
 		node.PrintMsg(msg)
 	} else {
-		reply.voteGranted = false
+		reply.VoteGranted = false
 	}
-	reply.term = node.currentTerm
-	reply.voterId = node.id
+	reply.Term = node.currentTerm
+	reply.VoterId = node.id
+	fmt.Printf("Voted by %d \n", node.id)
 	return nil
 }
 
 func (node *Node) RequestVoteFromAllPeers() {
 	node.mu.Lock()
-	
+	if node.state == Leader { //don't want to accidentally set leader back to candidate
+		node.mu.Unlock()
+		return
+	}
 	node.state = Candidate
+	node.currentTerm++; //increment new term w/ election
 	node.votedFor = node.id
 	node.voteCount = 1 // votes for itself
-	reqVoteArgs := &ReqVoteArgs{term: node.currentTerm, candidateId: node.id}
+	node.SetNewElectionTimeout()
+
+	reqVoteArgs := &ReqVoteArgs{Term: node.currentTerm, CandidateId: node.id}
 	resps := make(chan ReqVoteRespArgs, len(node.peers))
 	for id, peer := range node.peers {
 		resp := new(ReqVoteRespArgs)
@@ -188,16 +211,15 @@ func (node *Node) RequestVoteFromAllPeers() {
 			resp := <-resps
 
 			node.mu.Lock()
-			if resp.voteGranted {
+			if resp.VoteGranted {
 				node.voteCount++
 			}
 			if node.voteCount >= node.majority {
 				node.currentTerm++
-				node.state = Leader
-				node.votedFor = -1
-				node.voteCount = 0
-				node.SetNewElectionTimeout()
+				node.state = Leader 
 				node.leaderId = node.id
+				fmt.Printf("Node %d is leader\n", node.id);
+				node.hbTimer.Reset(0)
 				node.mu.Unlock()
 				return
 			}
@@ -207,7 +229,7 @@ func (node *Node) RequestVoteFromAllPeers() {
 }
 
 func (node *Node) SendHbToAllPeers() {
-	hbArgs := HbArgs{term: node.currentTerm, leaderId: node.id}
+	hbArgs := HbArgs{Term: node.currentTerm, LeaderId: node.id}
 	var reply bool
 	for id, peer := range node.peers {
 		go func () {
@@ -270,18 +292,21 @@ func main() {
 	for { 
 		node.PrintMsg("In main loop!")
 		select {
-		case hbArgs := <- node.hbCh:
-			node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
-			fmt.Println("Node", node.id, "received heartbrea from Node", hbArgs.leaderId)
+		// case hbArgs := <- node.hbCh:
+		// 	node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
+		// 	fmt.Println("Node", node.id, "received heartbrea from Node", hbArgs.LeaderId)
 		case <- node.electionTimer.C:
 			node.PrintMsg("ElectionTimer expired!")
 			go node.RequestVoteFromAllPeers()
 		case <- node.hbTimer.C:
-			if node.state != Leader {
-				continue
-			}
-			node.SendHbToAllPeers()
 			node.hbTimer.Reset(time.Duration(HEARTBEAT_PERIOD) * time.Millisecond)
+
+			node.mu.Lock()
+			isLeader := node.state == Leader
+			node.mu.Unlock()
+			if isLeader {
+				node.SendHbToAllPeers()
+			}
 		}
 	}
 
