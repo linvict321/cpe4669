@@ -70,7 +70,7 @@ type ReqVoteRespArgs struct {
 const BASE_PORT int = 8080
 const MAX_RETRIES int = 10
 const NOT_YET_VOTED_THIS_TERM int = -1
-const HEARTBEAT_PERIOD int = 3000 // how often leader sends a heartbeat, in ms
+const HEARTBEAT_PERIOD int = 50 // how often leader sends a heartbeat, in ms
 
 func ParseArgs() CliArgs {
 	argv := os.Args[1:]
@@ -99,16 +99,7 @@ func ParseArgs() CliArgs {
 }
 
 func (node *Node) SetNewElectionTimeout() {
-	// TODO: Return arg of IntN back to 151 after debugging!
-	node.electionTimeout = rand.IntN(5000) + 5000 // random int between [150, 300]
-	if node.electionTimer != nil {
-		node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
-	}
-}
-
-func (node *Node) SetNewElectionTimeout2() {
-	// TODO: Return arg of IntN back to 151 after debugging!
-	node.electionTimeout = 5000 // random int between [150, 300]
+	node.electionTimeout = rand.IntN(151) + 150 // random int between [150, 300]
 	if node.electionTimer != nil {
 		node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
 	}
@@ -125,14 +116,7 @@ func initNode(args CliArgs) *Node { // Go garbage collector means don't need to 
 	node.state = Follower
 	node.votedFor = NOT_YET_VOTED_THIS_TERM
 	node.voteCount = 0
-	if (node.id == 0) {
-		node.electionTimeout = 100
-	} else if (node.id == 1 || node.id == 2) {
-		node.SetNewElectionTimeout2()
-	} else {
-		node.electionTimeout = 100000
-	}
-	// node.SetNewElectionTimeout()
+	node.SetNewElectionTimeout()
 	node.totalNodes = args.N
 	node.majority = int(args.N / 2) + 1
 	node.peers = make(map[int]*rpc.Client, args.N-1)
@@ -145,7 +129,6 @@ func initNode(args CliArgs) *Node { // Go garbage collector means don't need to 
 	return node
 }
 
-// TODO: fix race condition of node state when node is Candidate
 func (node *Node) AppendEntries(hbArgs *HbArgs, reply *bool) error {
 
 	node.mu.Lock()
@@ -160,7 +143,7 @@ func (node *Node) AppendEntries(hbArgs *HbArgs, reply *bool) error {
 		node.state = Follower //candidate goes back to follower if it loses
 		node.voteCount = 0
 		node.leaderId = hbArgs.LeaderId
-		//node.SetNewElectionTimeout()
+		node.SetNewElectionTimeout()
 		*reply = true
 		msg := fmt.Sprintf("Term %d: recieved heartbeat from %d, eT is %d ms", node.currentTerm, hbArgs.LeaderId, node.electionTimeout)
 		node.PrintMsg(msg)
@@ -185,11 +168,7 @@ func (node *Node) RequestVote(voteReq *ReqVoteArgs, reply *ReqVoteRespArgs) erro
 
 	if (voteReq.Term == node.currentTerm) && (node.votedFor == NOT_YET_VOTED_THIS_TERM || node.votedFor == voteReq.CandidateId) {
 		reply.VoteGranted = true
-		if (node.currentTerm == 2) { // in our special case term 2, keep the hardcoded electionTimeouts
-			node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
-		} else {
-			node.SetNewElectionTimeout() //so no competing election starts
-		}
+		node.SetNewElectionTimeout() //so no competing election starts
 		node.votedFor = voteReq.CandidateId
 		msg := fmt.Sprintf("Term %d: voted for Node %d", node.currentTerm, voteReq.CandidateId)
 		node.PrintMsg(msg)
@@ -219,11 +198,6 @@ func (node *Node) RequestVoteFromAllPeers() {
 	reqVoteArgs := &ReqVoteArgs{Term: node.currentTerm, CandidateId: node.id}
 	resps := make(chan ReqVoteRespArgs, len(node.peers))
 	for id, peer := range node.peers {
-		if(node.id == 1 && node.currentTerm == 2 && id != 4){
-			continue
-		} else if(node.id == 2 && node.currentTerm == 2 && id != 3){
-			continue
-		}
 		resp := new(ReqVoteRespArgs)
 		go func () {
 			msg := fmt.Sprintf("Term %d, Requesting vote from Node %d", node.currentTerm, id)
@@ -265,10 +239,11 @@ func (node *Node) SendHbToAllPeers() {
 			if (reply == false) {
 				//msg := fmt.Sprintf("AppendEntry returned false from node %d\n", id)
 				//node.PrintMsg(msg)
-				id = id
+				id = id // need for compiling
 			}
 		}()
 	}
+	node.electionTimer.Reset(time.Duration(node.electionTimeout) * time.Millisecond)
 }
 
 func main() {
