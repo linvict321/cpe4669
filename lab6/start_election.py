@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 import os
 
+BASE_PORT = 8080
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Script for starting up N nodes for Raft election protocol.")
     parser.add_argument("N", help="Number of nodes to start", type=int)
@@ -36,7 +38,7 @@ def main():
             processes.append(subprocess.Popen([
                 str(executable), str(i), str(args.N)
             ]))
-            print(f'Started process with id {i} at port {9000+i}, with pid {processes[i].pid}')
+            print(f'Started process with id {i} at port {BASE_PORT+i}, with pid {processes[i].pid}')
 
         for process in processes:
             process.wait()

@@ -8,7 +8,7 @@ cd into the lab6 directory
 cd lab6
 ```
 
-To start all your nodes simulataneously, use the following, with <N> being the total number of nodes.
+To start all your nodes simulataneously as individual processes, use the following, with <N> being the total number of nodes.
 
 ```sh
 python start_election.py <N>
@@ -18,11 +18,15 @@ python start_election.py <N>
 
 Open up 8 terminals for the clients, you can split them with the Split Terminal button for vertical split and holding 'Alt' for horizontal splits.
 
-In each terminal, start each node via the following, replacing <ID> with any int within [0, 999], which will create a node that listens on localhost:9<ID>
+In each terminal, start each node via the following command, replacing <ID> with any int within [0, N), which will create a node that listens on localhost:<8080 + ID>, where <N> is the total number of nodes for the simulation.
 
 ```sh
-go run raft.go <ID>
+go run raft.go <ID> <N>
 ```
 
 Try to do this somewhat quickly so that they all start around the same time.
 Each process must also specify a different integer ID, such that each node has a unique ID.
+
+### Troubleshooting
+
+Note that if the nodes do not seem to connect to one another, try adjusting the BASE_PORT global const in BOTH `start_election.py` and `raft.go` to a different allowable port. This was found to be the cause of some issues on one our of local machines.
