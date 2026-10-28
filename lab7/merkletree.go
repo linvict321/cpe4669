@@ -6,9 +6,14 @@ import(
 )
 
 type struct MTNode {
-	Key []byte,
+	Key string,
+	Hash []byte,
 	Value []byte,
 	Children []MTNode
+}
+
+func MTInsertNode() {
+	
 }
 
 func BuildMerkleTree() MTNode {
