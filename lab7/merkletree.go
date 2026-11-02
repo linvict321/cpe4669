@@ -5,19 +5,19 @@ import (
 	"fmt"
 )
 
-type Node struct {
+type MTNode struct {
 	Key string
 	Hash string
 	Value string
-	Parent *Node
-	Children map[string]*Node
+	Parent *MTNode
+	Children map[string]*MTNode
 }
 
-func (node *Node) Insert(key string, value string) string {
+func (node *MTNode) Insert(key string, value string) string {
 	//TODO: have a check that sees if you need to do Insert recursively
 	// would use the returned hash from the child to adjust your hash, up until the root
 
-	dataNode := new(Node)
+	dataNode := new(MTNode)
 	dataNode.Key = key
 	dataNode.Value = value
 	dataNode.Parent = node
@@ -34,16 +34,16 @@ func (node *Node) Insert(key string, value string) string {
 	return node.Hash
 }
 
-func InitMerkleTree() *Node {
-	node := new(Node)
-	node.Children = make(map[string]*Node)
+func InitMerkleTree() *MTNode {
+	node := new(MTNode)
+	node.Children = make(map[string]*MTNode)
 
 	hash := md5.New()
 	node.Hash = string(hash.Sum(nil))
 	return node
 }
 
-func main() {
+func TestMerkleTree() {
 	node := InitMerkleTree()
 
 	fmt.Println(node)
