@@ -38,7 +38,7 @@ func connect() *rpc.Client {
 	return client
 }
 
-func get(key string) string {
+func get(Key string) string {
 	client := connect()
 	args := GetArgs{ key }
 	reply := GetReply{}

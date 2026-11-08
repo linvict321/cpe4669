@@ -34,6 +34,12 @@ func (node *Node) Insert(key string, value string) string {
 	return node.Hash
 }
 
+func (node *Node) DeleteNode(key string) error {
+
+	
+	return nil
+}
+
 func InitMerkleTree() *Node {
 	node := new(Node)
 	node.Children = make(map[string]*Node)
@@ -42,7 +48,7 @@ func InitMerkleTree() *Node {
 	node.Hash = string(hash.Sum(nil))
 	return node
 }
-
+/*
 func main() {
 	node := InitMerkleTree()
 
@@ -57,4 +63,4 @@ func main() {
 
 	fmt.Println(node.Hash == node2.Hash)
 }
-
+*/
