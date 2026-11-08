@@ -12,6 +12,8 @@ import (
 	"time"
 	"hash/fnv"
 	"slices"
+	"errors"
+	"sort"
 )
 
 type Node struct {
@@ -127,12 +129,12 @@ func put(key string, val string) {
 type VectorClock map[string]int //compare for updates; (node, counter) pair
 
 //sice of uint32 ints representing hashed key of nodes
-type SortedKeys []uint32 
+type SortedKeys []uint64 
 func (x SortedKeys) Len() int {	return len(x) }
 func (x SortedKeys) Less(i, j int) bool{	return x[i] < x[j]}
 func (x SortedKeys) Swap(i, j int) {x[i], x[j] = x[j], x[i]}
 type ConsistentHash struct {
-	ReplicationFactor int //num of virtual nodes
+	VirtualNodesNum int //num of virtual nodes
 	hashSortedKeys SortedKeys //sorted slice of hash values
 	circleRing map[uint64]string //map where key = hash, val = node
 	dataset map[string]bool //set of real nodes
@@ -144,7 +146,7 @@ type KV struct {
 
 func server() {
 	kv := &KV{data: map[string]string{}}
-	ch := &ConsistentHash{ReplicationFactor: 0, hashSortedKeys: SortedKeys{}, 
+	ch := &ConsistentHash{VirtualNodesNum: 0, hashSortedKeys: SortedKeys{}, 
 			circleRing: map[uint64]string{}, dataset: map[string]bool{}}
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
@@ -180,6 +182,7 @@ func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
 	return nil
 }
 
+
 //consistent hashing functions
 func(c *ConsistentHash) hash(key string) uint64{
 	hasher := fnv.New64a()
@@ -193,7 +196,7 @@ func(c *ConsistentHash) Add(node string){
 	key := c.hash(node) //hash value i
 	c.circleRing[key] = node
 
-	for i:= 0; i < c.ReplicationFactor; i++ {
+	for i:= 0; i < c.VirtualNodesNum; i++ {
 		virtual_key := strconv.Itoa(i) + "-" + node
 		virtual_hash := c.hash(virtual_key)
 		c.circleRing[virtual_hash] = node
@@ -201,11 +204,43 @@ func(c *ConsistentHash) Add(node string){
 	//insort but Go's version
 	slices.Sort(c.hashSortedKeys)
 }
-func(c *ConsistentHash) Get(node string){
 
+//gets the first virtual node that is clockwise
+func(c *ConsistentHash) Get(node string) (string, error){
+	if len(c.dataset) == 0{
+		return "", errors.New("empty struct")
+	}
+
+	targetH := c.hash(node)
+	idx := sort.Search(len(c.hashSortedKeys), 
+		func(i int) bool{ return c.hashSortedKeys[i] >= targetH})
+
+	if idx >= len(c.hashSortedKeys) { //if its at the end of ring
+		idx = 0
+	}
+	//uses binary search (sort.Search) to find the closest node
+
+	nearestNode, _ := c.circleRing[c.hashSortedKeys[idx]]
+	
+	return nearestNode, nil
 }
 func(c *ConsistentHash) Remove(node string){
 
+	//if not in dataset
+	if _, find c.dataset[node]; !find{
+		return
+	}
+
+	delete(c.dataset, node)
+	key = c.hash(node)
+	delete(c.circleRing, key)
+
+	//delete the virtual nodes
+	for i:= 0; i < c.VirtualNodesNum; i++{
+		vk := c.getVirtualNodeKey(i, node)
+		delete(c.circleRing, vk)
+	}
+	slices.Sort(c.hashSortedKeys) //update list again
 }
 
 
