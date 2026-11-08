@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"hash/fnv"
+	"slices"
 )
 
 type Node struct {
@@ -122,6 +124,19 @@ func put(key string, val string) {
 //
 // Server
 //
+type VectorClock map[string]int //compare for updates; (node, counter) pair
+
+//sice of uint32 ints representing hashed key of nodes
+type SortedKeys []uint32 
+func (x SortedKeys) Len() int {	return len(x) }
+func (x SortedKeys) Less(i, j int) bool{	return x[i] < x[j]}
+func (x SortedKeys) Swap(i, j int) {x[i], x[j] = x[j], x[i]}
+type ConsistentHash struct {
+	ReplicationFactor int //num of virtual nodes
+	hashSortedKeys SortedKeys //sorted slice of hash values
+	circleRing map[uint64]string //map where key = hash, val = node
+	dataset map[string]bool //set of real nodes
+}
 type KV struct {
 	mu sync.Mutex
 	data map[string]string
@@ -129,8 +144,11 @@ type KV struct {
 
 func server() {
 	kv := &KV{data: map[string]string{}}
+	ch := &ConsistentHash{ReplicationFactor: 0, hashSortedKeys: SortedKeys{}, 
+			circleRing: map[uint64]string{}, dataset: map[string]bool{}}
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
+	rpcs.Register(ch)
 	l, e := net.Listen("tcp", ":1234")
 	if e != nil {
 		log.Fatal("listen error:", e)
@@ -161,6 +179,35 @@ func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
 	kv.data[args.Key] = args.Value
 	return nil
 }
+
+//consistent hashing functions
+func(c *ConsistentHash) hash(key string) uint64{
+	hasher := fnv.New64a()
+	hasher.Write([]byte(key))
+	return hasher.Sum64()
+
+}
+func(c *ConsistentHash) Add(node string){
+
+	c.dataset[node] = true
+	key := c.hash(node) //hash value i
+	c.circleRing[key] = node
+
+	for i:= 0; i < c.ReplicationFactor; i++ {
+		virtual_key := strconv.Itoa(i) + "-" + node
+		virtual_hash := c.hash(virtual_key)
+		c.circleRing[virtual_hash] = node
+	}
+	//insort but Go's version
+	slices.Sort(c.hashSortedKeys)
+}
+func(c *ConsistentHash) Get(node string){
+
+}
+func(c *ConsistentHash) Remove(node string){
+
+}
+
 
 //
 // main
