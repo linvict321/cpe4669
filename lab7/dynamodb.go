@@ -1,19 +1,20 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"hash"
+	"hash/fnv"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
+	"slices"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
-	"hash/fnv"
-	"slices"
-	"errors"
-	"sort"
 )
 
 type Node struct {
@@ -126,7 +127,7 @@ func put(key string, val string) {
 //
 // Server
 //
-type VectorClock map[string]int //compare for updates; (node, counter) pair
+//type VectorClock map[string]uint64 //compare for updates; (node, counter) pair
 
 //sice of uint32 ints representing hashed key of nodes
 type SortedKeys []uint64 
