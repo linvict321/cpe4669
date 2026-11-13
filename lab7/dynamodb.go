@@ -17,11 +17,33 @@ import (
 	"time"
 )
 
+//coordinator handles looking at temp node (sloppy quorum and hinted handoff) to get info back to revived node, the node itself won't know
+
+//what should we set our fail time, and x_time, y_time, variables to?
+//note: x_time = increment heartbeat, y_time = send membership, fail_time = if not manually killing nodes can set time to kill
+
+//gossip/membership protocol structs
+type Membership struct {
+	id int
+	hbCount int64
+	time time.Time
+	alive bool
+}
+
+type GossipArgs struct { //sending request
+	Members map[int]Membership
+}
+
+type GossipReply struct {
+}
+
 type Node struct {
 	id              int
 	totalNodes      int // includes dead peers
 	port            int
 	peers           map[int]*rpc.Client
+	//might need mutex for membership table
+	membership map[int]Membership //membership table
 }
 
 //
@@ -77,14 +99,69 @@ func ParseArgs() CliArgs {
 }
 
 func initNode(args CliArgs) *Node { // Go garbage collector means don't need to worry about dangling pointer like in C
+	time := time.Now()
 	node := new(Node)
 	node.id = args.id
 	node.port = BASE_PORT + args.id
 	node.totalNodes = args.N
 	node.peers = make(map[int]*rpc.Client, args.N-1)
 
+	node.membership[node.id] = Membership{ //init self membership
+		id: node.id, hbCount: 0, time: time, alive: true,
+	}
+
 	return node
 }
+
+//heartbeat/gossip funcs
+func(node *Node) incrementHb() {
+	self := node.membership[node.id]
+	self.hbCount++
+	self.time = time.Now()
+	self.alive = true
+	node.membership[node.id] = self
+}
+
+func (node *Node) combineTables(incoming map[int]Membership) {
+	for id, receiving := range incoming { //iterate through node ids in membership table
+		old, exists := node.membership[id] //check if have node in membership table
+		if exists {
+			if receiving.hbCount > old.hbCount { //update membership entry
+				receiving.time = time.Now()
+				node.membership[id] = receiving
+			}
+		} else { //add to membership table
+			receiving.time = time.Now()
+			node.membership[id] = receiving
+		}
+	}
+}
+
+//gossip round func to send to two random neighbors (if same as last lab)
+
+//actual gossipRPC function to connect to the client and send
+func gossipRPC(peerId int, args *GossipArgs, reply *GossipReply) {
+/* From Lab5:
+var req = shared.Request{ID: id, Table: membership}
+	var self_req_response bool
+	if err := server.Call("Requests.Add", req, &self_req_response); err != nil {
+		fmt.Println("Error: Requests.Add()", err)
+	} else {
+		//fmt.Printf("Success: Message added to request list for Node %d\n", id)//commented out for cleaner debugging screen
+	}
+*/
+}
+
+//checkFailures() from lab5 should be pretty similar
+func(node *Node) checkFailures() {
+	for id, member := range node.membership {
+		//need fail_timeout variables
+		//if member.Alive && time.Since(member.Time) > FAIL_TIMEOUT {
+		//}
+	}
+}
+
+
 
 func(node *Node) PrintMsg(msg string) {
 	fmt.Println("[ NODE", node.id, "] -", msg)
@@ -102,7 +179,7 @@ func connect() *rpc.Client {
 }
 
 func get(Key string) string {
-	client := connect()
+	client := connect() //don't need to connect every time? but how do we get cur client then?
 	args := GetArgs{ key }
 	reply := GetReply{}
 	err := client.Call("KV.Get", &args, &reply)
@@ -140,6 +217,7 @@ type ConsistentHash struct {
 	circleRing map[uint64]string //map where key = hash, val = node
 	dataset map[string]bool //set of real nodes
 }
+
 type KV struct {
 	mu sync.Mutex
 	data map[string]string
