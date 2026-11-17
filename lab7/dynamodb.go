@@ -212,10 +212,11 @@ func (x SortedKeys) Len() int {	return len(x) }
 func (x SortedKeys) Less(i, j int) bool{	return x[i] < x[j]}
 func (x SortedKeys) Swap(i, j int) {x[i], x[j] = x[j], x[i]}
 type ConsistentHash struct {
+	mu sync.Mutex
 	VirtualNodesNum int //num of virtual nodes
 	hashSortedKeys SortedKeys //sorted slice of hash values
-	circleRing map[uint64]string //map where key = hash, val = node
-	dataset map[string]bool //set of real nodes
+	circleRing map[uint64]int //map where key = hash, val = node id
+	dataset map[int]bool //set of real nodes
 }
 
 type KV struct {
@@ -225,8 +226,8 @@ type KV struct {
 
 func server() {
 	kv := &KV{data: map[string]string{}}
-	ch := &ConsistentHash{VirtualNodesNum: 0, hashSortedKeys: SortedKeys{}, 
-			circleRing: map[uint64]string{}, dataset: map[string]bool{}}
+	ch := &ConsistentHash{VirtualNodesNum: 0, hashSortedKeys: SortedKeys{}, //TODO: change num of virtaul nodes to an input from the client
+			circleRing: map[uint64]int{}, dataset: map[int]bool{}}
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
 	rpcs.Register(ch)
@@ -269,25 +270,33 @@ func(c *ConsistentHash) hash(key string) uint64{
 	return hasher.Sum64()
 
 }
-func(c *ConsistentHash) Add(node string){
+func(c *ConsistentHash) Add(node int){
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dataset[node]{
+		return
+	}
 
 	c.dataset[node] = true
-	key := c.hash(node) //hash value i
+	key := c.hash(strconv.Itoa(node)) //hash value i
 	c.circleRing[key] = node
 
 	for i:= 0; i < c.VirtualNodesNum; i++ {
-		virtual_key := strconv.Itoa(i) + "-" + node
+		virtual_key := strconv.Itoa(i) + "-" + strconv.Itoa(node)
 		virtual_hash := c.hash(virtual_key)
 		c.circleRing[virtual_hash] = node
+		c.hashSortedKeys = append(c.hashSortedKeys, virtual_hash)
 	}
 	//insort but Go's version
 	slices.Sort(c.hashSortedKeys)
 }
 
 //gets the first virtual node that is clockwise
-func(c *ConsistentHash) Get(node string) (string, error){
+func(c *ConsistentHash) Get(node string) (int, error){
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.dataset) == 0{
-		return "", errors.New("empty struct")
+		return -1, errors.New("empty struct")
 	}
 
 	targetH := c.hash(node)
@@ -303,21 +312,21 @@ func(c *ConsistentHash) Get(node string) (string, error){
 	
 	return nearestNode, nil
 }
-func(c *ConsistentHash) Remove(node string){
-
+func(c *ConsistentHash) Remove(node int){
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	//if not in dataset
-	if _, find c.dataset[node]; !find{
+	if _, find := c.dataset[node]; !find{
 		return
 	}
 
 	delete(c.dataset, node)
-	key = c.hash(node)
+	key := c.hash(strconv.Itoa(node))
 	delete(c.circleRing, key)
 
 	//delete the virtual nodes
 	for i:= 0; i < c.VirtualNodesNum; i++{
-		vk := c.getVirtualNodeKey(i, node)
-		delete(c.circleRing, vk)
+		delete(c.circleRing, c.hash(strconv.Itoa(i) + "-" + strconv.Itoa(node)))
 	}
 	slices.Sort(c.hashSortedKeys) //update list again
 }
