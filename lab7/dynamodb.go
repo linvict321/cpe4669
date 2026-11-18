@@ -266,13 +266,13 @@ func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
 }
 
 
-//consistent hashing functions
-func(c *ConsistentHash) hash(key string) uint64{
+func cHash(key string) uint64{
 	hasher := fnv.New64a()
 	hasher.Write([]byte(key))
 	return hasher.Sum64()
-
 }
+
+//consistent hashing functions
 func(c *ConsistentHash) Add(node int){
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -281,12 +281,12 @@ func(c *ConsistentHash) Add(node int){
 	}
 
 	c.dataset[node] = true
-	key := c.hash(strconv.Itoa(node)) //hash value i
+	key := cHash(strconv.Itoa(node)) //hash value i
 	c.circleRing[key] = node
 
 	for i:= 0; i < c.VirtualNodesNum; i++ {
 		virtual_key := strconv.Itoa(i) + "-" + strconv.Itoa(node)
-		virtual_hash := c.hash(virtual_key)
+		virtual_hash := cHash(virtual_key)
 		c.circleRing[virtual_hash] = node
 		c.hashSortedKeys = append(c.hashSortedKeys, virtual_hash)
 	}
@@ -302,7 +302,7 @@ func(c *ConsistentHash) Get(node string) (int, error){
 		return -1, errors.New("empty struct")
 	}
 
-	targetH := c.hash(node)
+	targetH := cHash(node)
 	idx := sort.Search(len(c.hashSortedKeys), 
 		func(i int) bool{ return c.hashSortedKeys[i] >= targetH})
 
@@ -324,12 +324,12 @@ func(c *ConsistentHash) Remove(node int){
 	}
 
 	delete(c.dataset, node)
-	key := c.hash(strconv.Itoa(node))
+	key := cHash(strconv.Itoa(node))
 	delete(c.circleRing, key)
 
 	//delete the virtual nodes
 	for i:= 0; i < c.VirtualNodesNum; i++{
-		delete(c.circleRing, c.hash(strconv.Itoa(i) + "-" + strconv.Itoa(node)))
+		delete(c.circleRing, cHash(strconv.Itoa(i) + "-" + strconv.Itoa(node)))
 	}
 	slices.Sort(c.hashSortedKeys) //update list again
 }
