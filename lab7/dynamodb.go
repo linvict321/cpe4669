@@ -178,27 +178,30 @@ func connect() *rpc.Client {
 	return client
 }
 
-func get(Key string) string {
-	client := connect() //don't need to connect every time? but how do we get cur client then?
-	args := GetArgs{ key }
-	reply := GetReply{}
-	err := client.Call("KV.Get", &args, &reply)
+func(node *Node) get(key string, c *ConsistentHash) string {
+	node_id_with_key, err := c.Get(key)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
-	client.Close()
+
+	args := GetArgs{ key }
+	reply := GetReply{}
+	err = node.peers[node_id_with_key].Call("KV.Get", &args, &reply)
+	if err != nil {
+		log.Fatal("error:", err)
+	}
 	return reply.Value
 }
 
-func put(key string, val string) {
-	client := connect()
+func(node *Node) put(key string, val string, c *ConsistentHash) {
+	node_id_for_key, err := c.Get(key)
+	
 	args := PutArgs{ key, val }
 	reply := PutReply{}
-	err := client.Call("KV.Put", &args, &reply)
+	err = node.peers[node_id_for_key].Call("KV.Put", &args, &reply)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
-	client.Close()
 }
 
 //
@@ -352,8 +355,10 @@ func main() {
 
 	args := ParseArgs()
 	node := initNode(args)
+	db := new(KV)
 
 	rpc.Register(node) // register node with `rpc.DefaultServer`
+	rpc.Register(db)
 	rpc.HandleHTTP() // register an HTTP handler for RPC communication
 
 	// listen and serve requests to the default HTTP server
