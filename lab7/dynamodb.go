@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"slices"
+	"sort"
 
 	// "hash/fnv"
 	"log"
@@ -72,6 +74,7 @@ type CliArgs struct {
 const BASE_PORT int = 18080
 const MAX_RETRIES int = 10
 const NUM_VIRTUAL_NODES_PER_PHYS_NODE int = 4
+const NUM_REPLICAS int = 3
 
 func ParseArgs() CliArgs {
 	argv := os.Args[1:]
@@ -184,23 +187,46 @@ func(node *Node) PrintMsg(msg string) {
 func(node *Node) Get(req *GetArgs, reply *GetReply) error {
 	node_id_with_key, err := node.consistentHash.Get(req.Key)
 	if err != nil {
-		log.Fatal("error:", err)
+		return fmt.Errorf("Key '%s' not found!", req.Key)
 	}
 
 	err = node.peers[node_id_with_key].Call("KV.Get", req, reply)
 	if err != nil {
-		log.Fatal("error:", err)
+		return fmt.Errorf("Key '%s' not found!", req.Key)
 	}
 	return nil
 }
 
 func(node *Node) Put(req *PutArgs, reply *PutReply) error {
-	node_id_for_key, err := node.consistentHash.Get(req.Key)
+	c := node.consistentHash // for brevity
+	node_id_for_key, err := c.Get(req.Key)
 	
 	err = node.peers[node_id_for_key].Call("KV.Put", req, reply)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
+
+	// put in the 2 replicas as well (into different physical nodes)
+	targetH := cHash(req.Key)
+	idx := sort.Search(len(c.hashSortedKeys), 
+		func(i int) bool{ return c.hashSortedKeys[i] >= targetH})
+	if idx >= len(c.hashSortedKeys) { //if its at the end of ring
+		idx = 0
+	}
+
+	physNodeIDsKeyPutIn := []int{node_id_for_key}
+	for range (NUM_REPLICAS-1) {
+		idx = (idx + 1) % len(c.hashSortedKeys)
+		for slices.Contains(physNodeIDsKeyPutIn, c.circleRing[c.hashSortedKeys[idx]]) {
+			idx = (idx + 1) % len(c.hashSortedKeys)
+		}
+		replicaNodeId, _ := c.circleRing[c.hashSortedKeys[idx]]
+		err = node.peers[replicaNodeId].Call("KV.Put", req, reply)
+		if err != nil {
+			log.Fatal("error:", err)
+		}
+	}
+
 	return nil
 }
 
@@ -211,6 +237,7 @@ func(node *Node) Put(req *PutArgs, reply *PutReply) error {
 
 type KV struct {
 	mu sync.Mutex
+	nodeId int
 	store *Store
 }
 
@@ -223,6 +250,7 @@ func (kv *KV) Get(args *GetArgs, reply *GetReply) error {
 		return fmt.Errorf("Key '%s' not found!", args.Key)
 	}
 
+	//TODO: do the version reconciliation before returning the value
 	reply.Value = versions[len(versions)-1].Value
 	return nil
 }
@@ -231,7 +259,9 @@ func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	kv.store.PutVersion(args.Key, args.Value, nil) //TODO: how to input the vector clock for this object?
+	//TODO: how to input the vector clock for this object?
+	kv.store.PutVersion(args.Key, args.Value, nil)
+	fmt.Println("[ NODE", kv.nodeId, "] -", "put", args.Key, ":", args.Value)
 	return nil
 }
 
@@ -240,6 +270,7 @@ func main() {
 	node := initNode(args)
 	kv := new(KV)
 	kv.store = NewStore()
+	kv.nodeId = args.id
 
 	rpc.Register(node) // register node with `rpc.DefaultServer`
 	rpc.Register(kv)

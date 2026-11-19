@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"slices"
 	"sort"
@@ -66,14 +67,14 @@ func(c *ConsistentHash) Print() {
 }
 
 //gets the first virtual node that is clockwise
-func(c *ConsistentHash) Get(node string) (int, error){
+func(c *ConsistentHash) Get(key string) (int, error){
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.dataset) == 0{
 		return -1, errors.New("empty struct")
 	}
 
-	targetH := cHash(node)
+	targetH := cHash(key)
 	idx := sort.Search(len(c.hashSortedKeys), 
 		func(i int) bool{ return c.hashSortedKeys[i] >= targetH})
 
@@ -84,6 +85,8 @@ func(c *ConsistentHash) Get(node string) (int, error){
 
 	nearestNode, _ := c.circleRing[c.hashSortedKeys[idx]]
 	
+	fmt.Println("c.Get returned:", nearestNode)
+
 	return nearestNode, nil
 }
 func(c *ConsistentHash) Remove(node int){
