@@ -5,6 +5,19 @@ import (
 	"fmt"
 )
 
+type MerkleNode struct {
+	Key string
+	Value string
+	Hash string
+	Left *MerkleNode
+	Right *MerkleNode
+	Leaf bool
+}
+
+func buildMerkleTree(data []string) *MerkleNode {
+	return new(MerkleNode)
+}
+
 type MTNode struct {
 	Key string
 	Hash string
@@ -12,6 +25,7 @@ type MTNode struct {
 	Parent *MTNode
 	Children map[string]*MTNode
 }
+
 
 func (node *MTNode) Insert(key string, value string) string {
 	//TODO: have a check that sees if you need to do Insert recursively

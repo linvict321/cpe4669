@@ -3,10 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"hash"
 	"hash/fnv"
 	"log"
-	"net"
 	"net/http"
 	"net/rpc"
 	"os"
@@ -71,6 +69,7 @@ type CliArgs struct {
 
 const BASE_PORT int = 18080
 const MAX_RETRIES int = 10
+const NUM_VIRTUAL_NODES_PER_PHYS_NODE int = 4
 
 func ParseArgs() CliArgs {
 	argv := os.Args[1:]
@@ -104,8 +103,9 @@ func initNode(args CliArgs) *Node { // Go garbage collector means don't need to 
 	node.id = args.id
 	node.port = BASE_PORT + args.id
 	node.totalNodes = args.N
-	node.peers = make(map[int]*rpc.Client, args.N-1)
+	node.peers = make(map[int]*rpc.Client, args.N)
 
+	node.membership = make(map[int]Membership, args.N)
 	node.membership[node.id] = Membership{ //init self membership
 		id: node.id, hbCount: 0, time: time, alive: true,
 	}
@@ -140,7 +140,7 @@ func (node *Node) combineTables(incoming map[int]Membership) {
 //gossip round func to send to two random neighbors (if same as last lab)
 
 //actual gossipRPC function to connect to the client and send
-func gossipRPC(peerId int, args *GossipArgs, reply *GossipReply) {
+func GossipRPC(peerId int, args *GossipArgs, reply *GossipReply) {
 /* From Lab5:
 var req = shared.Request{ID: id, Table: membership}
 	var self_req_response bool
@@ -153,11 +153,13 @@ var req = shared.Request{ID: id, Table: membership}
 }
 
 //checkFailures() from lab5 should be pretty similar
-func(node *Node) checkFailures() {
+func(node *Node) CheckFailures() {
 	for id, member := range node.membership {
 		//need fail_timeout variables
 		//if member.Alive && time.Since(member.Time) > FAIL_TIMEOUT {
 		//}
+		id = id
+		member = member
 	}
 }
 
@@ -170,13 +172,6 @@ func(node *Node) PrintMsg(msg string) {
 //
 // Client
 //
-func connect() *rpc.Client {
-	client, err := rpc.Dial("tcp", ":1234")
-	if err != nil {
-		log.Fatal("dialing:", err)
-	}
-	return client
-}
 
 func(node *Node) get(key string, c *ConsistentHash) string {
 	node_id_with_key, err := c.Get(key)
@@ -209,7 +204,34 @@ func(node *Node) put(key string, val string, c *ConsistentHash) {
 //
 //type VectorClock map[string]uint64 //compare for updates; (node, counter) pair
 
-//sice of uint32 ints representing hashed key of nodes
+type KV struct {
+	mu sync.Mutex
+	//data map[string]string
+	store *Store
+}
+
+func (kv *KV) Get(args *GetArgs, reply *GetReply) error {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	versions := kv.store.GetVersions(args.Key)
+	if len(versions) < 0 {
+		return errors.New(fmt.Sprintf("Key '%s' not found!", args.Key))
+	}
+
+	reply.Value = versions[len(versions)-1].Value
+	return nil
+}
+
+func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	kv.store.PutVersion(args.Key, args.Value, nil) //TODO: how to input the vector clock for this object?
+	return nil
+}
+
+//slice of uint64 ints representing hashed key of nodes
 type SortedKeys []uint64 
 func (x SortedKeys) Len() int {	return len(x) }
 func (x SortedKeys) Less(i, j int) bool{	return x[i] < x[j]}
@@ -222,49 +244,14 @@ type ConsistentHash struct {
 	dataset map[int]bool //set of real nodes
 }
 
-type KV struct {
-	mu sync.Mutex
-	data map[string]string
+func NewConsistentHash(numPhysNodes int, numVirtualsPerPhys int) *ConsistentHash {
+	c := new(ConsistentHash)
+	c.VirtualNodesNum = numVirtualsPerPhys
+	c.hashSortedKeys = make(SortedKeys, numVirtualsPerPhys * numPhysNodes)
+	c.circleRing = make(map[uint64]int)
+	c.dataset = make(map[int]bool)
+	return c
 }
-
-func server() {
-	kv := &KV{data: map[string]string{}}
-	ch := &ConsistentHash{VirtualNodesNum: 0, hashSortedKeys: SortedKeys{}, //TODO: change num of virtaul nodes to an input from the client
-			circleRing: map[uint64]int{}, dataset: map[int]bool{}}
-	rpcs := rpc.NewServer()
-	rpcs.Register(kv)
-	rpcs.Register(ch)
-	l, e := net.Listen("tcp", ":1234")
-	if e != nil {
-		log.Fatal("listen error:", e)
-	}
-	go func() {
-		for {
-			conn, err := l.Accept()
-			if err == nil {
-				go rpcs.ServeConn(conn)
-			} else {
-				break
-			}
-		}
-		l.Close()
-	}()
-}
-
-func (kv *KV) Get(args *GetArgs, reply *GetReply) error {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	reply.Value = kv.data[args.Key]
-	return nil
-}
-
-func (kv *KV) Put(args *PutArgs, reply *PutReply) error {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	kv.data[args.Key] = args.Value
-	return nil
-}
-
 
 func cHash(key string) uint64{
 	hasher := fnv.New64a()
@@ -281,10 +268,10 @@ func(c *ConsistentHash) Add(node int){
 	}
 
 	c.dataset[node] = true
-	key := cHash(strconv.Itoa(node)) //hash value i
-	c.circleRing[key] = node
+	// key := cHash(strconv.Itoa(node)) //hash value i
+	// c.circleRing[key] = node
 
-	for i:= 0; i < c.VirtualNodesNum; i++ {
+	for i := range c.VirtualNodesNum {
 		virtual_key := strconv.Itoa(i) + "-" + strconv.Itoa(node)
 		virtual_hash := cHash(virtual_key)
 		c.circleRing[virtual_hash] = node
@@ -292,6 +279,12 @@ func(c *ConsistentHash) Add(node int){
 	}
 	//insort but Go's version
 	slices.Sort(c.hashSortedKeys)
+}
+
+func(c *ConsistentHash) Print() {
+	for hash, node_id := range c.circleRing {
+		println("hash:", hash, "node id:", node_id)
+	}
 }
 
 //gets the first virtual node that is clockwise
@@ -335,30 +328,14 @@ func(c *ConsistentHash) Remove(node int){
 }
 
 
-//
-// main
-//
 func main() {
-	// server()
-	
-	// put("subject", "6.5840")
-	// fmt.Printf("Put(subject, 6.5840) done\n")
-	// fmt.Printf("get(subject) -> %s\n", get("subject"))
-
-	// data := "test data"
-	// hash := md5.New()
-	// n, _ := hash.Write([]byte(data))
-
-	// fmt.Printf("Hashed is type %T and value %x\n", hash.Sum(nil), hash.Sum(nil))
-	// fmt.Println(n, hash.Sum(nil))
-
-
 	args := ParseArgs()
 	node := initNode(args)
-	db := new(KV)
+	kv := new(KV)
+	kv.store = NewStore()
 
 	rpc.Register(node) // register node with `rpc.DefaultServer`
-	rpc.Register(db)
+	rpc.Register(kv)
 	rpc.HandleHTTP() // register an HTTP handler for RPC communication
 
 	// listen and serve requests to the default HTTP server
@@ -374,20 +351,16 @@ func main() {
 
 	// now connect to the other nodes
 	for i := range args.N {
-		if i == args.id {
-			continue // don't connect to self
-		}
 		peerAddr := "localhost:" + strconv.Itoa(BASE_PORT + i)
 		
 		var peer *rpc.Client
 		var err error
-		for i := range MAX_RETRIES { // continuous for loop for retrying
+		for range MAX_RETRIES { // continuous for loop for retrying
 			peer, err = rpc.DialHTTP("tcp", peerAddr)
 			if err == nil {
 				break
 			}
 			// fmt.Println("Waiting for node ", i, "'s server to setup")
-			i = i
 			time.Sleep(200 * time.Millisecond)
 		}
 		if err != nil {
@@ -399,6 +372,23 @@ func main() {
 		node.PrintMsg(msg)
 	}
 	time.Sleep(time.Duration(3) * time.Second)
+
+	// set up the consistent hash ring
+	consistentHash := NewConsistentHash(args.N, NUM_VIRTUAL_NODES_PER_PHYS_NODE)
+	for i := range args.N {
+		consistentHash.Add(i)
+	}
+
+	// node.PrintMsg(fmt.Sprintf("ConsistentHash: %d", consistentHash.VirtualNodesNum))
+	// if node.id == 0 {
+	// 	consistentHash.Print()
+	// }
+
+	go func() {
+		for {
+			time.Sleep(1000)
+		}
+	}()
 
 	wg.Wait() // keep at end of main to keep the nodes running forever
 }

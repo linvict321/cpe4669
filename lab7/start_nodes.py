@@ -28,7 +28,8 @@ def main():
         "dynamodb.exe" if os.name == "nt" else "dynamodb"
     ).resolve()
     subprocess.run(
-        ["go", "build", "-o", str(executable), "dynamodb.go"],
+        ["go", "build", "-o", str(executable),
+         "dynamodb.go", "vectorClock.go", "merkletree.go"],
         check=True,
     )
 
