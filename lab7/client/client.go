@@ -49,7 +49,7 @@ func main() {
 				continue
 			}
 			args := clientPutArgs{Key: fields[1], Value: strings.Join(fields[2:], " ")}
-			if err := client.Call("KV.Put", &args, &struct{}{}); err != nil {
+			if err := client.Call("Node.Put", &args, &struct{}{}); err != nil {
 				fmt.Println("Put failed:", err)
 			} else {
 				fmt.Println("OK")
@@ -61,7 +61,7 @@ func main() {
 			}
 			args := clientGetArgs{Key: fields[1]}
 			var reply clientGetReply
-			if err := client.Call("KV.Get", &args, &reply); err != nil {
+			if err := client.Call("Node.Get", &args, &reply); err != nil {
 				fmt.Println("Get failed:", err)
 			} else {
 				fmt.Println(reply.Value)

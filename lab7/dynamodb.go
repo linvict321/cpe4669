@@ -43,6 +43,7 @@ type Node struct {
 	peers           map[int]*rpc.Client
 	//might need mutex for membership table
 	membership map[int]Membership //membership table
+	consistentHash *ConsistentHash
 }
 
 //
@@ -111,6 +112,12 @@ func initNode(args CliArgs) *Node { // Go garbage collector means don't need to 
 		id: node.id, hbCount: 0, time: time, alive: true,
 	}
 
+	// set up the consistent hash ring
+	node.consistentHash = NewConsistentHash(args.N, NUM_VIRTUAL_NODES_PER_PHYS_NODE)
+	for i := range args.N {
+		node.consistentHash.Add(i)
+	}
+
 	return node
 }
 
@@ -174,30 +181,27 @@ func(node *Node) PrintMsg(msg string) {
 // Client
 //
 
-func(node *Node) get(key string, c *ConsistentHash) string {
-	node_id_with_key, err := c.Get(key)
+func(node *Node) Get(req *GetArgs, reply *GetReply) error {
+	node_id_with_key, err := node.consistentHash.Get(req.Key)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
 
-	args := GetArgs{ key }
-	reply := GetReply{}
-	err = node.peers[node_id_with_key].Call("KV.Get", &args, &reply)
+	err = node.peers[node_id_with_key].Call("KV.Get", req, reply)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
-	return reply.Value
+	return nil
 }
 
-func(node *Node) put(key string, val string, c *ConsistentHash) {
-	node_id_for_key, err := c.Get(key)
+func(node *Node) Put(req *PutArgs, reply *PutReply) error {
+	node_id_for_key, err := node.consistentHash.Get(req.Key)
 	
-	args := PutArgs{ key, val }
-	reply := PutReply{}
-	err = node.peers[node_id_for_key].Call("KV.Put", &args, &reply)
+	err = node.peers[node_id_for_key].Call("KV.Put", req, reply)
 	if err != nil {
 		log.Fatal("error:", err)
 	}
+	return nil
 }
 
 //
@@ -275,23 +279,6 @@ func main() {
 		node.PrintMsg(msg)
 	}
 	time.Sleep(time.Duration(3) * time.Second)
-
-	// set up the consistent hash ring
-	consistentHash := NewConsistentHash(args.N, NUM_VIRTUAL_NODES_PER_PHYS_NODE)
-	for i := range args.N {
-		consistentHash.Add(i)
-	}
-
-	// node.PrintMsg(fmt.Sprintf("ConsistentHash: %d", consistentHash.VirtualNodesNum))
-	// if node.id == 0 {
-	// 	consistentHash.Print()
-	// }
-
-	go func() {
-		for {
-			time.Sleep(1000)
-		}
-	}()
 
 	wg.Wait() // keep at end of main to keep the nodes running forever
 }
