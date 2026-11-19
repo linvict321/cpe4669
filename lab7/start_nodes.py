@@ -29,7 +29,7 @@ def main():
     ).resolve()
     subprocess.run(
         ["go", "build", "-o", str(executable),
-         "dynamodb.go", "vectorClock.go", "merkletree.go"],
+         "dynamodb.go", "vectorClock.go", "merkletree.go", "consistentHash.go"],
         check=True,
     )
 
